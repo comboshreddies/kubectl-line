@@ -126,7 +126,7 @@ not return named column resutls
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>' | grep -v ^#line
 ```
 
-## dumping all objects from all contexts within ~/.kube/config file
+## dumping all clusters ie contexts from ~/.kube/config file
 ``` bash
 time /bin/bash -c "
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}} "
