@@ -248,9 +248,13 @@ _ get | _ kc-inject
 would not make sense.
 
 Following execution pipe streams are allowed:
+
    kc-inject -> [ config get-contexts | api-resources | get | top | sh | ... ]
+
    config get-contexts -> [ api-resources | get | top | sh | ... ]
+
    api-resources -> [ get | top | sh | ... ]
+
    [ get | top ] -> [ get | top | sh | ... ]
 
 
