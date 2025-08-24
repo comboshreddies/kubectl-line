@@ -4,22 +4,43 @@ pass importat parameteres between executions in pipe sequence
 
 
 # Available {{ }} tags
+
 kubeconfig file:
+
  ?x:kc -> conditional switch kubeconfig -> --kubeconfig config
+
  ?:kc -> conditional kubeconfig -> config | ''
+
  kc -> kubeconfig -> config
+
+
 context:
+
  ?x:ctx  - conditional switch context-> --context ctx | ''
+
  ?:ctx - conditional context-> ctx | ''
+
  ctx - context -> ctx | {{ctx}}
+
+
 namespace:
+
  ?x:ns - conditional switch namespace
+
  ?:ns - conditional namespace
+
  ns - namespace
+
+
 kind: 
+
  kind -> kind
+
 name:
+
  name -> name
+
+
 
 # flow arangements
 
