@@ -15,9 +15,9 @@ kubectl --context cluster1 -n some-ns get pod --show-labels
 ```
 and then
 ``` bash
-LIST=$(kubectl --context cluster1 -n some-ns get pod --no-headers -l app=some| awk '{print $1 }') \
+LIST=$(kubectl --context clst1 -n some get pod --no-headers -l app=some| awk '{print $1 }') \
 for i in $LIST) ; do
-   kubectl --context cluster1 -n some-ns delete pod $i;
+   kubectl --context clst1 -n some delete pod $i;
 done
 ```
 
