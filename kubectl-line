@@ -8,7 +8,7 @@ import signal
 from stat import S_ISFIFO
 import re
 
-
+PLUGIN_VERSION = 'v0.8.1'
 PLUGIN_NAME = "line"
 PLUGIN_UNAME = PLUGIN_NAME.upper()
 PIPE_CMD_IN = "pipe-cmd-in"
@@ -254,6 +254,7 @@ def instruction_help(instructions, kctl_generators):
         "uniq": "uniq as api-resources might return more same kind items"
     }
     instructions.sort()
+    print(f"Plugin version {PLUGIN_VERSION}")
     print("Those are this plugin internal commands:")
     for i in instructions:
         if i in info:
