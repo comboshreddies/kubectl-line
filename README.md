@@ -15,7 +15,8 @@ kubectl --context cluster1 -n some-ns get pod --show-labels
 ```
 and then
 ``` bash
-for i in $(kubectl --context cluster1 -n some-ns get pod --no-headers -l app=some| awk '{print $1 }') ; do
+LIST=$(kubectl --context cluster1 -n some-ns get pod --no-headers -l app=some| awk '{print $1 }') \
+for i in $LIST) ; do
    kubectl --context cluster1 -n some-ns delete pod $i;
 done
 ```
@@ -26,11 +27,13 @@ One could use xargs but it won't make command line simpler.
 
 With this tool I can
 ``` bash
-_ --context cluster1 -n some-ns get pod -l app=some | _ delete pod {{name}}
+_ --context cluster1 -n some-ns get pod -l app=some | \
+ _ delete pod {{name}}
 ```
 or if you use it as kubectl plugin
 ``` bash
-kubectl line --context cluser1 -n some-ns get pod -l app=some | kubectl line delete pod {{name}}
+kubectl line --context cluser1 -n some-ns get pod -l app=some | \
+ kubectl line delete pod {{name}}
 ```
 I usually use this plugin as direct kubectl wrapper, as I link kubectl-line to /usr/local/bin/_
 
@@ -38,7 +41,9 @@ I usually use this plugin as direct kubectl wrapper, as I link kubectl-line to /
 I would usually have a script that dumps all kubernetes objects for some cluster, but 
 with this tool I can:
 ``` bash
-_ --context minikube api-resources | _ get {{kind}} -A | _ get {{kind}} {{name}} -o yaml > all_objects
+_ --context minikube api-resources | \
+ _ get {{kind}} -A | \
+ _ get {{kind}} {{name}} -o yaml > /tmp/all_objects
 ```
 In example above context, namesapace field (of each get {{kind}} -A), would be passed via pipe to
 left most _ get {{kind}} {{name}} so you will get list of single item objects on output
