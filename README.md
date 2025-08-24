@@ -109,16 +109,18 @@ used on the previous pipe (to left) execution, it will be repeated
 on all other pipe executions (to the right)
 
 For example:
+``` bash
 _ --context minikube -n test-run get pods | _ get pod {{name}}
+```
 in second execution (_ get pod {{name}} ..) context and namespace
-are used (passed) from left side of pipe execution, so execution on right
+are passed from left side of pipe execution, so execution on right
 is evaluated to
 kubectl --context minikube -n test-run get pod {{name}}
 and name is replaced for each item in name column that command on the left
 has printed out.
 
-If one that runs commands want to explicitly execute some field
-it can use some of {{ }} tags, explained in sectipon below.
+If you want to explicitly execute some field you
+can use some of {{ }} tags, explained in section below.
 
 
 # Available {{ }} tags
@@ -158,6 +160,17 @@ name:
 
  name -> name
 
+
+Also for any named column like ROLE, AGE, NAME, NAMESPACE ... in previous pipe result
+one can address those like {{ROLE}}, {{AGE}}, {{NAME}}, {{NAMESPACE}}.
+
+This tool relies on column names, but tries to be flexible on any column name format it gets,
+so as long as you keep column names with capital letters, you can use custom-columns formating of output.
+For example if you specify
+``` bash
+-o custom-columns=ABCD:.metadata.name,XYZ:.metadata.namespace,OPQ:.kind
+```
+you should be able to use those column with their custom names.
 
 
 # flow arangements
