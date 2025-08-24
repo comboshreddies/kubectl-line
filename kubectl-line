@@ -300,7 +300,8 @@ def stream_helper():
     print("Following execution streams are allowed:")
     print("   kc-inject -> [ config get-contexts | api-resources | get | top | sh | ... ]")
     print("   config get-contexts -> [ api-resources | get | top | sh | ... ]")
-    print("   [ get | top ] -> [ get | top | sh | ... ] ")
+    print("   api-resources -> [ get | top | sh | ... ]")
+    print("   [ get | top ] -> [ get | top | sh | ... ]")
 
 
 def int_signal_handler(sig, frame):
@@ -2028,7 +2029,7 @@ def command_unknown(command, args):
 def q_evaluate(op1, op2, operator):
     """evaluate operator, and operands"""
     q_check = False
-    if type(op1) is type(op2):
+    if type(op1) is not type(op2):
         l_print_e(P_WARNING, f" input types are not same: {type(op1)} != {type(op2)}")
         return False
     if operator == 'eq' and op1 == op2:
@@ -2105,7 +2106,7 @@ def command_question(args):
         line_num += 1
         skip = False
         parse_debug = False
-        if (len(args) == 4 and args[3] == "??") or (len(args) == 3 and args[2] == "??"):
+        if (len(args) == 4 and args[3] == "_?") or (len(args) == 3 and args[2] == "_?"):
             l_print_e("debug?", f"line content: {content}")
             parse_debug = True
         if column_to_inspect not in columns:
