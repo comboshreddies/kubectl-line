@@ -434,7 +434,7 @@ def detect_in_plugin_content(pin, line):
                 pin["opt"] += line[len(PIPE_OPT_IN) + 2: -1]
             else:
                 pin["opt"] = line[len(PIPE_OPT_IN) + 2: -1]
-        if pin["cmd"] == "get" and line.startswith(f"{PIPE_GET_IN}: "):
+        if "cmd" in pin and pin["cmd"] == "get" and line.startswith(f"{PIPE_GET_IN}: "):
             pin["get"] = line[len(PIPE_GET_IN) + 2: -1]
     return pin
 
@@ -1107,7 +1107,7 @@ def command_json_inject():
     """injecting context or kubeconfig in json"""
     inject = ""
     line = sys.stdin.readline()
-    p_in = {}
+    p_in = set_pipe_input()
     while line:
         newline = sys.stdin.readline()
         if line.startswith(f"#{PLUGIN_NAME}:"):
@@ -1476,7 +1476,7 @@ def command_others(command, args, cmd, extracted_args_position, get_flags, plugi
         system_exec(" ".join(exec_args))
 
 
-def command_kctl_generators_pipe_in(command, args, extracted_args_position, get_flags):
+def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position, get_flags):
     """handling pipe in for get/extract/sh/describe ... and plugins"""
     position = []
     columns = []
@@ -1593,6 +1593,11 @@ def command_kctl_generators_pipe_in(command, args, extracted_args_position, get_
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["ns"] != P_UNKNOWN:
+                    l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+                if cmd["kind"] != P_UNKNOWN:
+                    l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
+                pass_output_format(args)
             to_exec = replace_exec_line_with_content(to_exec, content)
             system_exec(to_exec)
             continue
@@ -1710,6 +1715,10 @@ def command_kctl_generators_pipe_in(command, args, extracted_args_position, get_
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["ns"] != P_UNKNOWN:
+                    l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+                if cmd["kind"] != P_UNKNOWN:
+                    l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
                 exec_words = to_exec.split()
                 no_header_present = "--no-headers" in exec_words
                 pass_output_format(args)
@@ -1910,7 +1919,7 @@ def command_kctl_generators_pipe_in(command, args, extracted_args_position, get_
 def command_kctl_generators(command, args, cmd, extracted_args_position, get_flags, plugins):
     """handling get,sh,explain,describe ... and plugins"""
     if detect_input() == "fifo":
-        command_kctl_generators_pipe_in(command, args, extracted_args_position, get_flags)
+        command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position, get_flags)
     else:  # command get, no input pipe
         if detect_output() == "pipe":
             if command in plugins:
