@@ -212,6 +212,7 @@ Group of commands that you will execute as last in pipe sequence:
 
   _ get
   get can also be terminator, as it can be starter
+
   _ sh
    execute shell with available {{.}} tags and environment variables
 
