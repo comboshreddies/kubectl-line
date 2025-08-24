@@ -14,7 +14,8 @@ I would usually run something like:
 kubectl --context cluster1 -n some-ns get pod --show-labels
 ```
 and then
-``` for i in $(kubectl --context cluster1 -n some-ns get pod --no-headers -l app=some| awk '{print $1 }') ; do
+``` bash
+for i in $(kubectl --context cluster1 -n some-ns get pod --no-headers -l app=some| awk '{print $1 }') ; do
    kubectl --context cluster1 -n some-ns delete pod $i;
 done
 ```
