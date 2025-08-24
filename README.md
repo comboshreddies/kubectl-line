@@ -1,4 +1,4 @@
-# A tool for streamed kubectl execution
+# A tool for pipe streamed kubectl execution
 this tool works on top of kubectl named column, being able to
 pass importat parameteres between executions in pipe sequence
 
