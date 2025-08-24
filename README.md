@@ -2,6 +2,28 @@
 this tool works on top of kubectl named column, being able to
 pass importat parameteres between executions in pipe sequence
 
+It can be used as kubectl plugin - kubectl-line,
+or you can link it as a binary named _ , and you don't have to 
+repeat kubectl line on every execution, you just type _.
+
+
+# Passing arguments between pipes
+If any parameter (like kubeconfig file, context, namespace) is being
+used on the previous pipe (to left) execution, it will be repeated
+on all other pipe executions (to the right)
+
+For example:
+_ --context minikube -n test-run get pods | _ get pod {{name}}
+in second execution (_ get pod {{name}} ..) context and namespace
+are used (passed) from left side of pipe execution, so execution on right
+is evaluated to
+kubectl --context minikube -n test-run get pod {{name}}
+and name is replaced for each item in name column that command on the left
+has printed out.
+
+If one that runs commands want to explicitly execute some field
+it can use some of {{ }} tags, explained in sectipon below.
+
 
 # Available {{ }} tags
 
