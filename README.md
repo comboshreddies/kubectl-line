@@ -1,5 +1,5 @@
 # A tool for pipe streamed kubectl execution
-this tool works on top of kubectl named column, being able to
+This tool works on top of kubectl named column, being able to
 pass importat parameteres between executions in pipe sequence
 
 It can be used as kubectl plugin - kubectl-line,
