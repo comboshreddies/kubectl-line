@@ -1,0 +1,2608 @@
+#!/usr/bin/env python3
+"""kubectl plugin for passing kctl results via pipe"""
+
+import sys
+import os
+import subprocess
+import signal
+from stat import S_ISFIFO
+import re
+
+
+PLUGIN_NAME = "line"
+PLUGIN_UNAME = PLUGIN_NAME.upper()
+PIPE_CMD_IN = "pipe-cmd-in"
+PIPE_GET_IN = "pipe-get-in"
+PIPE_KC_IN = "pipe-kc-in"
+PIPE_CTX_IN = "pipe-ctx-in"
+PIPE_FMT_IN = "pipe-fmt-in"
+PIPE_NS_IN = "pipe-ns-in"
+PIPE_OPT_IN = "pipe-opt-in"
+PIPE_NSED_IN = "pipe-nsed-in"
+PIPE_KIND_IN = "pipe-kind-in"
+PIPE_NAME_IN = "pipe-name-in"
+PIPE_NOTE_IN = "pipe-note-in"
+PIPE_OO_IN = "pipe-oo_in"
+P_UNKNOWN = "_unknown_"
+P_DEFAULT = "_default_"
+P_WARNING = "warning"
+P_ERROR = "error"
+P_CUSTOM_FMT = "custom-format"
+P_SHORTCUT = "_"
+P_EXEC = "exec"
+P_DEBUG_C = "content"
+P_DEBUG_IN = "pipe-in"
+
+
+P_IGNORE_ERRORS = os.getenv(f"{PLUGIN_UNAME}_IGNORE_ERRORS")
+P_SHORTCUT = os.getenv(f"{PLUGIN_UNAME}_SHORTCUT") or "_"
+P_DEBUG = os.getenv(f"{PLUGIN_UNAME}_DEBUG")
+P_CONTENT_DEBUG = os.getenv(f"{PLUGIN_UNAME}_CONTENT_DEBUG")
+P_IN_DEBUG = os.getenv(f"{PLUGIN_UNAME}_IN_DEBUG")
+P_DISABLE_CACHE = os.getenv(f"{PLUGIN_UNAME}_DISABLE_CACHE") or False
+
+line_command_cache = {}
+
+
+def examples_help():
+    """provide examples"""
+    print(
+        f"Let's assume that you have named this plugin {PLUGIN_UNAME} "
+        " as kubectl-_ , for start you could:\n"
+        "---\n"
+        "$ kubectl _ api-r\n"
+        "or just\n"
+        "$ _ api-r\n"
+        "---\n"
+        "Example of simple piped usage:\n"
+        "$ _ -n test-run get pod -l app=nginx | _ -n test-run get pod "
+        "{{name}}\n"
+        "or more generic:\n"
+        "$ _ -n test-run get pod -l app=nginx | _ get {{kind}} {{name}}\n"
+        "Note: -n test-run will be passed through pipe and used in command"
+        "to right\n"
+        "---\n"
+        "You can use shortcut for api-resources\n"
+        "$ _ api-r\n"
+        "---\n"
+        "Now you can list all objects in your default cluster:\n"
+        "$ _ api-r | _ get {{kind}} -A\n"
+        "For example you can list all objects in cluster with specific"
+        "label:\n"
+        "$ _ api-r | _ get {{kind}} -A -l app=nginx\n"
+        "---\n"
+        "By setting debug environment varible you can get executed commands"
+        "on stderr:\n"
+        f"$ export {PLUGIN_UNAME}_DEBUG=true\n"
+        "$ _ api-r | _ get {{kind}} -A\n"
+        "You will now get more lines that start with # with commands that are"
+        " executed.\n"
+        "---\n"
+        "With cgc you can make shortcut for config get-contexts, so you can"
+        " dump\n"
+        "all objects in all clusters that are listed with config "
+        "get-contexts:\n"
+        "$ _ cgc | _  api-r | _ get {{kind}} -A -l app=nginx | "
+        "_ get {{kind}} {{name}}\n"
+        "or you can list all objects, if you're not using -l :\n"
+        "$ _ cgc | _  api-r | _ get {{kind}} -A -l app=nginx | _ get"
+        " {{kind}} {{name}}\n"
+        "or you can have dump all objects in yaml:\n"
+        "$ _ cgc | _  api-r | _ get {{kind}} -A -l app=nginx | _ get"
+        " {{kind}} {{name}} -o yaml\n"
+        "or you can additional context injector in each yaml with:\n"
+        "$ _ cgc | _  api-r | _ get {{kind}} -A -l app=nginx |\n"
+        " _ get {{kind}} {{name}} -o yaml | _ yaml-inject\n"
+        "There is json context inject for get with -o json format.\n"
+        "---\n"
+        "Approach above first listed all contexts (cgc), then it listed\n"
+        " all resources (api-r), then for each\n"
+        "resource kind listed (get) each resource kind in all namespaces "
+        "(using -A flag)\n"
+        "Then for each kind/namespace/name dumped exact object into yaml, "
+        "then injected context.\n"
+        "You might like context injection as you might find multiple "
+        "objects within \n"
+        "multiple contexts/clusters\n"
+        "and you won't be able to differentiate those, so context "
+        "injection"
+        " field might be usefull.\n"
+        "---\n"
+        "Listing all resource listing can be done in other way with:\n"
+        "$ _ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}}\n"
+        "This time there is no get {{kind}} -A - we're not getting all "
+        "kinds of \n"
+        "resources in all namespaces\n"
+        "In this case after listing all clusters and all resources\n"
+        "there is a list of all namespaces. Then for each namespace/"
+        "kind(resource) \n"
+        "objects are listed.\n"
+        "From that list of objects of specific kind and namespace, each "
+        "object ({{name}}) is listed\n"
+        "Using this plugin one way or another to list all resources, "
+        "yet in some cases one or other\n"
+        "approach might be faster.\n"
+        "---\n"
+        "If you have multiple kube config files, then you can use kc-"
+        "inject command:\n"
+        "$ _ kc-inject kc_file1 kc_file2 | _ cgc | _  api-r | _ get "
+        "{{kind}} -A  \n"
+        "this will list all contexts from each of kubeconfig files, "
+        "and list all \n"
+        "resources of each kind\n"
+        "for each cluster context in each kc_file.\n"
+        "---\n"
+        "kc-inject operates on level of --kubeconfig kubectl param and "
+        "passes that info\n"
+        " along pipe stream\n"
+        "cgc is shortcut for config get-contexts, it lists all contexts"
+        " for given --kubeconfig file\n"
+        "and passes --context param along pipe stream\n"
+        "_ api-r is shortcut for api-resources, it list all kinds of "
+        "objects available incluster\n"
+        "and passes objects as a {{kind}} parameter along pipe stream\n"
+        "_ get ns, for given kubeconfig/context will show namespaces, "
+        "and passes \n"
+        "namespace {{ns}} along pipe stream\n"
+        "_ get {{kind}} will show all objects, and if there is "
+        "kubeconfig/context/\n"
+        "namespace/kind present\n"
+        "it will silently use those, so your _ get {{kind}} might expand"
+        " to something like\n"
+        "kubectl --kubeconfig kcfile --context clstr1 -n utils get pod\n"
+        "---\n"
+        "_ plugin behaves differently if it detects pipe on left (input)"
+        " or right (output)\n"
+        "so for example you can\n"
+        "$ _ api-r > file\n"
+        "then look what output is, and then\n"
+        "$ cat file | _ get {{kind}} -A\n"
+        "or\n"
+        "$ _ get {{kind}} -A < file\n"
+        "---\n"
+        "If you want to break out of kubectl pipe stream you can use"
+        " _ sh, with:\n"
+        "$ _ api-r | _ sh echo {{kind}}\n"
+        "You can echo all kinds, or run some custom script for each"
+        " {{kind}}\n"
+        "with:\n"
+        "$ _ --context minikube get ns | _ sh echo  {{ctx}} {{ns}}\n"
+        "You will print both context and namespace.\n"
+        "If context is available it can be used as {{ctx}}\n"
+        "If namespace is avaialble it can be used as {{ns}}\n"
+        "If kind is available it can be used as {{kind}}\n"
+        "If object name is avaialble it can be used as {{name}}\n"
+        "$ _ --context minikube -n test-run get pod | _ sh echo {{ctx}}"
+        " {{ns}} {{kind}} {{name}}\n"
+        "this will print fields, but this:\n"
+        "$ _ -n test-run get pod | _ sh echo {{ctx}} {{ns}} {{kind}} "
+        "{{name}}\n"
+        "will not render {{ctx}} as there is no --context flag\n"
+        "---\n"
+        "sh command also sets environment so you can do\n"
+        "$ _ api-r | _ get {{kind}} -A | _ sh env | " f"grep "
+        f"{PLUGIN_NAME}_ \n"
+        "this will show all env variables that start with plugin "
+        "name on each sh execution\n"
+        "---\n"
+        "Example of api-resources with explain:\n"
+        "$ _ api-r | _ explain {{kind}}\n"
+        "this will fetch explain for all resources available in cluster\n"
+        "and you can for example drill down:\n"
+        "$ _ api-r | _ explain {{kind}}.spec\n"
+        "---\n"
+        "Example of describe:\n"
+        "$ _ -n test-run get pod | _ describe {{kind}} {{name}}\n"
+        "---\n"
+        "This pluggin will pass other plugins like (for plugin o):\n"
+        "$ _ -n app get pod | _ o get {{kind}} {{name}}\n"
+        "---\n"
+        "Also exec is supported:\n"
+        "$ _ -n app get pod -l app=nginx | _ exec {{kind}} {{name}} "
+        "-c nginx \n"
+        "-- /bin/bash -c 'hostname'\n"
+        "---\n"
+        "This plugin should support (to some extent) existing plugins,\n"
+        "for example here is o plugin for adjusting kubectl output:\n"
+        " _ o xxl -n test-run get pod | _ sh echo {{NAME}} {{LABELS}}\n"
+        "---\n"
+        "You can filter lines with + or filter out with - :\n"
+        "$ _ api-r | _ + KIND Namespace '^Pod$' \n"
+        "or for example:\n"
+        "$ _ get pods | _ - NAME nginx\n"
+        "---\n"
+        "In some cases, like api-resources, you can get duplicates\n"
+        "so you can use uniq command:\n"
+        "$ _ api-r | _ uniq KIND\n"
+    )
+
+
+def env_vars_helper():
+    """display help about available env vars"""
+    print("set environment variables to any value:")
+    print(f"env {PLUGIN_UNAME}_DEBUG - used to debug kubectl executions")
+    print(f"env {PLUGIN_UNAME}_CONTENT_DEBUG - used to debug detected pipe content")
+    print(f"env {PLUGIN_UNAME}_SHORTCUT - used to specify shortcut, _ by default")
+
+
+def instruction_help(instructions, kctl_generators):
+    """provide instructions"""
+    print("---------------")
+    info = {
+        "+": "select lines containing argument word, + <column_name> <argument> ...",
+        "-": "remove lines containing argument word, - <column_name> <argument> ...",
+        "?": "include lines that match expression like ? AGE < 10d ",
+        "api-r": "shortuct for api-resources",
+        "cgc": "shortcut for config get-contexts kubectl command",
+        "clean": "remove comment lines that are this plugin generates",
+        "config": "kubectl config but only config get-contexts is supported",
+        "env-vars": "info about available environment variables",
+        "examples": "showing examples of this tool",
+        "-help": "this help",
+        "help": "kubectl help",
+        "json-inject": "injects context tag into json file, "
+        "if get/-o json is used",
+        "kc-inject": "injects all contexts from all kubeconfig "
+        "referenced files",
+        "sh": "executes shell with environment variables set, "
+        "along with name replacement",
+        "top": "kubectl top command",
+        "get": "kubectl get",
+        "api-resources": "kubectl api-resources",
+        "yaml-inject": "injects context into yaml file, "
+        "if get/-o yaml is used",
+        "uniq": "uniq as api-resources might return more same kind items"
+    }
+    instructions.sort()
+    print("Those are this plugin internal commands:")
+    for i in instructions:
+        if i in info:
+            print(f"   {i} : " + info.get(i))
+        else:
+            print(f"   {i} :")
+    print("---------------")
+    print("Those kubectl commands are handled by this plugin:")
+    for i in kctl_generators:
+        print(f"   {i} : " + info.get(i))
+    print("---------------")
+
+
+class StdinRecollector:
+    """recollector of stdin, ensuring \n at the end"""
+    eof = False
+    line = ""
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.eof:
+            raise StopIteration
+        try:
+            if self.line:
+                self.line += sys.stdin.__next__()
+            else:
+                self.line = sys.stdin.__next__()
+            while len(self.line) > 0 and self.line[-1] != '\n':
+                self.line += sys.stdin.__next__()
+            newl = self.line
+            self.line = ""
+            return newl
+        except EOFError as exc:
+            if not self.line:
+                raise StopIteration from exc
+            self.eof = True
+            return self.line
+
+
+def stream_helper():
+    """help about allowed streams"""
+    print("Following execution streams are allowed:")
+    print("   kc-inject -> [ config get-contexts | api-resources | get | top | sh | ... ]")
+    print("   config get-contexts -> [ api-resources | get | top | sh | ... ]")
+    print("   [ get | top ] -> [ get | top | sh | ... ] ")
+
+
+def int_signal_handler(sig, frame):
+    """interrupt signal handler"""
+    print(f"Exit on Ctrl+C!\n{sig}\n{frame}")
+    os.kill(os.getppid(), signal.SIGTERM)
+    sys.exit(0)
+
+
+def term_signal_handler(sig, frame):
+    """term signal handler"""
+    print(f"Exit on term signal!\n{sig}\n{frame}")
+    sys.exit(0)
+
+
+def detect_input():
+    """reports process input type"""
+    if sys.stdin.isatty():
+        return "terminal"
+    if S_ISFIFO(os.fstat(0).st_mode):
+        return "fifo"
+    return "pipe"
+
+
+def content_to_environ(content):
+    """exports parsed content to environment variables"""
+    for key, value in content.items():
+        os.environ[f"{PLUGIN_UNAME}_{key}"] = value
+
+
+def p_in_to_environ(p_in):
+    """exports pipe in to environment variables"""
+    for key, value in p_in.items():
+        if value != P_UNKNOWN:
+            os.environ[f"{PLUGIN_UNAME}_P_IN_{key}"] = value
+
+
+def replace_exec_line_with_content(exec_line, content):
+    """replaces decored content in exec line to execute"""
+    if P_CONTENT_DEBUG:
+        l_print_e(P_DEBUG_C, content)
+        l_print_e(P_DEBUG_C, exec_line)
+    for key, value in content.items():
+        exec_line = exec_line.replace("{{" + key + "}}", value)
+    return exec_line
+
+
+def detect_output():
+    """reports process output type"""
+    if sys.stdout.isatty():
+        return "terminal"
+    return "pipe"
+
+
+def l_print_t(p_type, arg):
+    """type print to stdout"""
+    print(f"#{PLUGIN_NAME}:{p_type}: {arg}", flush=True)
+
+
+def l_print_e(p_type, arg):
+    """type print to stderr"""
+    print(f"#{PLUGIN_NAME}:{p_type}: {arg}", flush=True, file=sys.stderr)
+
+
+def available_plugins():
+    """load available kubectl plugins"""
+    plugins = []
+    command = ["kubectl", "plugin", "list"]
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+        if len(e.stdout):
+            print(f"{e.stdout}", flush=True, end="")
+        if len(e.stderr):
+            l_print_e(P_ERROR, f":stderr:{e.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(e.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+        sys.exit(10)
+    command_output = result.stdout
+    lines = command_output.split("\n")
+    for line in lines:
+        if "/kubectl-" in line:
+            offset = line.rindex("/kubectl-") + len("/kubectl-")
+            plugins.append(line[offset:])
+    return plugins
+
+
+def set_pipe_input():
+    """initialize p_in, pipe in structure"""
+    p = {}
+    for i in ["format", "ctx", "cmd", "kind", "nsed", "name", "ns", "get", "obj", "kc", "oo"]:
+        p[i] = P_UNKNOWN
+    return p
+
+
+def set_cmd_input():
+    """initialize cmd input structure"""
+    cmd = {}
+    for i in ["ctx", "ns", "kind", "name", "kc", "oo"]:
+        cmd[i] = P_UNKNOWN
+    return cmd
+
+
+def detect_in_plugin_content(pin, line):
+    """read info passed via pipe"""
+    if line.startswith(f"#{PLUGIN_NAME}:"):
+        line = line[len(f"#{PLUGIN_NAME}:"):]
+        if line.startswith(f"{PIPE_CMD_IN}: "):
+            pin["cmd"] = line[len(PIPE_CMD_IN) + 2: -1]
+            pin["opt"] = ""
+        elif line.startswith(f"{PIPE_FMT_IN}: "):
+            pin["format"] = line[len(PIPE_FMT_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_NS_IN}: "):
+            pin["ns"] = line[len(PIPE_NS_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_KIND_IN}: "):
+            pin["kind"] = line[len(PIPE_KIND_IN) + 2: -1]
+            pin["opt"] = ""
+        elif line.startswith(f"{PIPE_CTX_IN}: "):
+            pin["ctx"] = line[len(PIPE_CTX_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_NSED_IN}: "):
+            pin["nsed"] = line[len(PIPE_NSED_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_KC_IN}: "):
+            pin["kc"] = line[len(PIPE_KC_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_OO_IN}: "):
+            pin["oo"] = line[len(PIPE_OO_IN) + 2: -1]
+        elif pin["cmd"] == "get" and line.startswith(f"{PIPE_OPT_IN}: "):
+            if "opt" in pin:
+                pin["opt"] += line[len(PIPE_OPT_IN) + 2: -1]
+            else:
+                pin["opt"] = line[len(PIPE_OPT_IN) + 2: -1]
+        if pin["cmd"] == "get" and line.startswith(f"{PIPE_GET_IN}: "):
+            pin["get"] = line[len(PIPE_GET_IN) + 2: -1]
+    return pin
+
+
+def read_header_line(line):
+    """reads kubectl row with headers"""
+    position = []
+    columns = []
+    words = line.split()
+    ofs = 0
+    pval = ""
+    pwords = []
+
+    for value in words:
+        if value == "CREATED":
+            pval = value
+        else:
+            if pval == "CREATED" and value == "AT":
+                value = "CREATED AT"
+            pwords.append(value)
+
+    for value in pwords:
+        pos = ofs + line[ofs:].index(value)
+        position.append(pos)
+        columns.append(value)
+        ofs = pos + len(value)
+    return (position, columns)
+
+
+def read_row_from_line(position, columns, line):
+    """reads content of kubectl output after header"""
+    content = {}
+    if len(position):
+        item = ""
+        for idx, value in enumerate(position):
+            if idx + 1 < len(position):
+                item = line[value: position[idx + 1] - 1]
+            else:
+                item = line[value: -1]
+            content[columns[idx]] = item.rstrip()
+    return content
+
+
+def fetch_kubectl_options():
+    """read available kubectl options"""
+    exec_args = ["kubectl", "options"]
+    try:
+        result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+        if len(e.stdout):
+            print(f"{e.stdout}", flush=True, end="")
+        if len(e.stderr):
+            l_print_e(P_ERROR, f":stderr:{e.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(e.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+        sys.exit(11)
+    command_output = result.stdout
+    lines = command_output.split("\n")
+    opt_dict = {}
+    for line in lines:
+        left_part = line.split(":")[0]
+        words = left_part.split()
+        if len(words) > 0 and words[0][0] == "-":
+            for word in words:
+                short_present = ''
+                if word[0] == "-" and word[0:2] != "--" and word[-1] == ",":
+                    opt_dict[word[0:-1]] = ''
+                    short_present = word[0:-1]
+                if word[0:2] == "--" and "=" in word:
+                    left_part = word[: word.index("=")]
+                    right_part = word[word.index("=") + 1:]
+                    if "''" == right_part:
+                        right_part = ""
+                    else:
+                        split_right = right_part.split("'")
+                        if len(split_right) > 2:
+                            right_part = right_part.split("'")[1]
+                    opt_dict[left_part] = right_part
+                    if short_present:
+                        opt_dict[short_present] = right_part
+    return opt_dict
+
+
+def fetch_kubectl_cmds():
+    """reads available kubectl commands"""
+    exec_args = ["kubectl"]
+    try:
+        result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+        if len(e.stdout):
+            print(f"{e.stdout}", flush=True, end="")
+        if len(e.stderr):
+            l_print_e(P_ERROR, f":stderr:{e.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(e.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+        sys.exit(12)
+    command_output = result.stdout
+    lines = command_output.split("\n")
+    cmd_list = []
+    skip = False
+    for line in lines:
+        if line == "Subcommands provided by plugins:":
+            skip = True
+        if line == "Usage:":
+            break
+        if line == "":
+            skip = False
+        if skip:
+            continue
+        if line and line[-1] != ":" and line[:2] == "  ":
+            words = line.split()
+            cmd_list.append(words[0])
+    return cmd_list
+
+
+def fetch_kubectl_gettable_resources(context=""):
+    """reads gettable resources"""
+    if context:
+        exec_args = [
+            "kubectl",
+            "--context",
+            context,
+            "api-resources",
+            "--verbs=get,list",
+            "--no-headers",
+        ]
+    else:
+        exec_args = ["kubectl", "api-resources", "--verbs=get,list", "--no-headers"]
+    try:
+        result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+        if len(e.stdout):
+            print(f"{e.stdout}", flush=True, end="")
+        if len(e.stderr):
+            l_print_e(P_ERROR, f":stderr:{e.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(e.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+        sys.exit(13)
+    command_output = result.stdout
+    lines = command_output.split("\n")
+    res_list = []
+    for line in lines:
+        sublist = []
+        words = line.split()
+        if len(words) == 5:
+            sublist = words
+        elif len(words) == 4:
+            sublist = [words[0], "", words[1], words[2], words[3]]
+        res_list.append(sublist)
+    return res_list
+
+
+def fetch_kubectl_cmd_options(cmd, context=""):
+    """get available kubeclt options for specific command"""
+    if context:
+        exec_args = ["kubectl", "--context", context, cmd, "-h"]
+    else:
+        exec_args = ["kubectl", cmd, "-h"]
+    try:
+        result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+        if len(e.stdout):
+            print(f"{e.stdout}", flush=True, end="")
+        if len(e.stderr):
+            l_print_e(P_ERROR, f":stderr:{e.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(e.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+        sys.exit(14)
+    command_output = result.stdout
+    lines = command_output.split("\n")
+    opt_list = []
+    skip = True
+    for line in lines:
+        if line == "Options:":
+            skip = False
+        if line == "Usage:":
+            break
+        if skip:
+            continue
+        left_part = line.split(":")[0]
+        words = left_part.split()
+        if len(words) > 0 and words[0][0] == "-":
+            for word in words:
+                if word[0] == "-" and word[0:2] != "--" and word[-1] == ",":
+                    opt_list.append(word[:-1])
+                if word[0:2] == "--" and "=" in word:
+                    opt_list.append(word[: word.index("=")])
+    return opt_list
+
+
+def system_exec(cmd):
+    """wraps command execution"""
+    if P_DEBUG:
+        l_print_e(P_EXEC, f"{cmd}")
+    exec_args = ["/bin/bash", "-c", cmd]
+    if not P_DISABLE_CACHE and cmd in line_command_cache:
+        command_output = line_command_cache[cmd]
+        if P_DEBUG:
+            l_print_e(P_DEBUG, f"cache hit on : {cmd}")
+    else:
+        try:
+            result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as e:
+            l_print_e(P_ERROR, f"executing: {e.cmd[2:]}")
+            if len(e.stdout):
+                print(f"{e.stdout}", flush=True, end="")
+            if len(e.stderr):
+                l_print_e(P_ERROR, f":stderr:{e.stderr}")
+            if not P_IGNORE_ERRORS:
+                sys.exit(e.returncode)
+            else:
+                l_print_e(P_ERROR, f":stderr: exit code {e.returncode}, ignoring error")
+            return
+        command_output = result.stdout
+        if not P_DISABLE_CACHE:
+            if cmd not in line_command_cache:
+                line_command_cache[cmd] = command_output
+    lines = command_output.split("\n")
+    for idx, value in enumerate(lines):
+        if idx == len(lines) - 1:
+            print(value, end="")
+        else:
+            print(value)
+
+
+def pass_output_format(args):
+    """detects kubectl command line output and pass to pipe"""
+    output_present = "-o" in args[1:]
+    if output_present:
+        if len(args) > args[1:].index("-o") + 1:
+            output_options = args[1:][args[1:].index("-o") + 1]
+            l_print_t(PIPE_FMT_IN, f"{output_options}")
+            return
+    else:
+        right_args = args[1:]
+        for idx, value in enumerate(right_args):
+            if value.startswith("--options"):
+                if "=" in value:
+                    eq_offset = value.index("=")
+                    output_options = value[eq_offset + 1:]
+                    l_print_t(PIPE_FMT_IN, f"{output_options}")
+                    return
+                if len(right_args) > idx + 1:
+                    output_options = right_args[idx + 1]
+                    l_print_t(PIPE_FMT_IN, f"{output_options}")
+                    return
+    l_print_t(PIPE_FMT_IN, f"{P_DEFAULT}")
+
+
+def extract_get_options(context, args, kctl_opts):
+    """extract get command options used"""
+    get_extracted = []
+    flags = ""
+    if context == P_UNKNOWN:
+        get_opts = fetch_kubectl_cmd_options("get")
+    else:
+        get_opts = fetch_kubectl_cmd_options("get", context=context)
+    i = 0
+    while i < len(args):
+        if args[i] in kctl_opts:
+            i += 2
+            continue
+        if args[i] in get_opts:
+            if args[i] in ["-n", "--namespace"] and len(args) > i + 1:
+                i += 2
+                continue
+            if (
+                args[i] == "-A"
+            ):  # edge case -A does not take param, should be handled in some other way
+                flags += args[i]
+                i += 1
+                continue
+            if len(args) > i + 1:
+                flags += f"{args[i]} {args[i + 1]}"
+                i += 2
+                continue
+        if "=" in args[i]:
+            if "=" in args[i]:
+                eq_index = args[i][:-1].index("=")
+                if args[i][:eq_index] in kctl_opts:
+                    i += 1
+                    continue
+                if args[i][:eq_index] in get_opts:
+                    flags += args[i][eq_index + 1:]
+                    i += 1
+                    continue
+        get_extracted.append(args[i])
+        i += 1
+    return get_extracted, flags
+
+
+def extract_args(args, cmd, kctl_opts):
+    """extract kubectl args"""
+    extracted = []
+    extracted_args_position = []
+    i = 0
+    while i < len(args):
+        if args[i] in kctl_opts:
+            if args[i] in ["-n", "--namespace"] and len(args) > i + 1:
+                cmd["ns"] = args[i + 1]
+            elif args[i] == "--context" and len(args) > i + 1:
+                cmd["ctx"] = args[i + 1]
+            elif args[i] == "--kubeconfig" and len(args) > i + 1:
+                cmd["kc"] = args[i + 1]
+            else:
+                if cmd["oo"] == P_UNKNOWN:
+                    if kctl_opts[args[i]] == "false":
+                        cmd["oo"] = args[i]
+                    else:
+                        cmd["oo"] = args[i] + " " + args[i + 1]
+                else:
+                    if kctl_opts[args[i]] == "false":
+                        cmd["oo"] += " " + args[i]
+                    else:
+                        cmd["oo"] += " " + args[i] + " " + args[i + 1]
+            if kctl_opts[args[i]] == "false":
+                i += 1
+            else:
+                i += 2
+            continue
+        if "=" in args[i][:-1]:
+            eq_index = args[i][:-1].index("=")
+            if args[i][:eq_index] in kctl_opts:
+                if args[i][:eq_index] in ["-n", "--namespace"]:
+                    cmd["ns"] = args[i][eq_index + 1]
+                elif args[i][:eq_index] == "--context":
+                    cmd["ctx"] = args[i][eq_index + 1]
+                elif args[i][:eq_index] == "--kubeconfig":
+                    cmd["kc"] = args[i][eq_index + 1]
+                else:
+                    cmd["oo"] += " " + args[i]
+            i += 1
+            continue
+        if len(args[i]) > 1 and args[i][1] == "-":
+            if "=" in args[i]:
+                i += 1
+                continue
+            i += 2
+            continue
+        if args[i][0:2] == "{{" and args[i][-2:] == "}}":
+            i += 1
+            continue
+        if args[i] == P_SHORTCUT:
+            i += 1
+            continue
+        extracted.append(args[i])
+        extracted_args_position.append(i)
+        i += 1
+
+    return extracted, extracted_args_position, cmd
+
+
+def generate_to_exec(p_in, to_check):
+    """generates kubectl line based on available data"""
+    if p_in["oo"] != P_UNKNOWN:
+        to_check = to_check.replace(" _ ", " " + p_in["oo"] + " _ ")
+    if p_in["kc"] != P_UNKNOWN:
+        to_check = to_check.replace(" _ ", " {{?x:kc}} _ ")
+        to_check = to_check.replace("{{?x:kc}}", "--kubeconfig " + p_in["kc"])
+        to_check = to_check.replace("{{?:kc}}", p_in["kc"])
+        to_check = to_check.replace("{{kc}}", p_in["kc"])
+    else:
+        to_check = to_check.replace("{{?x:kc}}", "")
+        to_check = to_check.replace("{{?:kc}}", "")
+    if p_in["ctx"] != P_UNKNOWN:
+        to_check = to_check.replace(" _ ", " {{?x:ctx}} _ ")
+        to_check = to_check.replace("{{?x:ctx}}", "--context " + p_in["ctx"])
+        to_check = to_check.replace("{{?:ctx}}", p_in["ctx"])
+        to_check = to_check.replace("{{ctx}}", p_in["ctx"])
+    else:
+        to_check = to_check.replace("{{?x:ctx}}", "")
+        to_check = to_check.replace("{{?:ctx}}", "")
+    if p_in["nsed"] != P_UNKNOWN:
+        to_check = to_check.replace("{{nsed}}", p_in["nsed"])
+    if p_in["ns"] != P_UNKNOWN and p_in["ns"] != "<none>":
+        to_check = to_check.replace(" _ ", " {{?x:ns}} _ ")
+        to_check = to_check.replace("{{?x:ns}}", " -n " + p_in["ns"])
+        to_check = to_check.replace("{{?:ns}}", p_in["ns"])
+        to_check = to_check.replace("{{ns}}", p_in["ns"])
+    else:
+        to_check = to_check.replace("{{?x:ns}}", "")
+        to_check = to_check.replace("{{?:ns}}", "")
+    to_check = to_check.replace(" _ ", " ")
+    return to_check
+
+
+def command_api_r_in_pipe(command, args, cmd):
+    """handling api-resources with pipe in"""
+    prev_line = ""
+    position = []
+    columns = []
+    p_in = set_pipe_input()  # NOTE p_in["obj"] might hold something
+    # prev_p_in = set_pipe_input()
+    for line in standard_input:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            line_num = 0
+            continue
+        if p_in["cmd"] not in ["config_get-contexts", "kc-inject", P_UNKNOWN]:
+            l_print_t(
+                P_ERROR,
+                f"Illegal pipe pass: from {p_in['cmd']} to api-resources",
+            )
+            stream_helper()
+            break
+        if p_in["cmd"] in ["kc-inject", P_UNKNOWN]:  # command cgc, in kc-inject
+            print(p_in["cmd"])
+            print(p_in["format"])
+            print(p_in)
+            print("->" + line + "<-")
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["FILE"] = p_in["kc"]
+                line_num += 1
+            if detect_output() == "pipe":
+                l_print_t(PIPE_CMD_IN, "config_get-contexts")
+                if content["FILE"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{content['FILE']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                pass_output_format(args)
+            exec_args = ["kubectl"]
+            if content["FILE"] != P_UNKNOWN:
+                exec_args += ["--kubeconfig", content["FILE"]]
+            exec_args += args[1:]
+            system_exec(" ".join(exec_args))
+            continue
+        if p_in["cmd"] == "config_get-contexts":  # command api-r
+            if p_in["format"] == P_DEFAULT:
+                # loading headers
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+                if "NAME" in content:
+                    p_in["ctx"] = content["NAME"]
+            elif p_in["format"] == "name":
+                p_in["ctx"] = line[:-1]
+            to_check = ""
+            if args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if detect_output() == "pipe":  # command api-r, in cgc
+                l_print_t(PIPE_CMD_IN, f"{command}")
+                if p_in["ctx"] != P_UNKNOWN:
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                if cmd["ns"] != P_UNKNOWN:
+                    l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                pass_output_format(args)
+                l_print_t(PIPE_NOTE_IN, "appending --verbs=get,list")
+                to_exec = to_exec + " --verbs=get,list"
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+            continue
+    # command api resources,  no in cmd, best effort
+        if detect_input() == "fifo":
+            if prev_line:
+                line = prev_line + line
+            if line[-1] != "\n":
+                prev_line = line
+                continue
+            if line_num == 0 and line.isupper():
+                line_num += 1
+                position, columns = read_header_line(line)
+                continue
+            content = read_row_from_line(position, columns, line)
+            line_num += 1
+            if "NAME" in content:
+                p_in["ctx"] = content["NAME"]
+            # if context is explicit column, we override context from name
+            # context can be generated with some other tool or formated file
+            if "CONTEXT" in content:
+                p_in["ctx"] = content["CONTEXT"]
+            if p_in["ctx"] == P_UNKNOWN:  # taking line as context name
+                p_in["ctx"] = line[:-1]
+            to_check = ""
+            if args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if detect_output() == "pipe":  # command api-r, no in cmd
+                l_print_t(PIPE_CMD_IN, f"{command}")
+                if p_in["ctx"] != P_UNKNOWN:
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                pass_output_format(args)
+                l_print_t(PIPE_NOTE_IN, "appending --verbs=get,list")
+                to_exec = to_exec + " --verbs=get,list"
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+
+
+def command_api_r(command, args, cmd, extracted_args_position):
+    """handles api-resources command"""
+    if command == "api-r":
+        command = "api-resources"
+        args[extracted_args_position[1]] = "api-resources"
+    if detect_input() == "fifo":
+        command_api_r_in_pipe(command, args, cmd)
+    else:  # command api-resources, detect input is not fifo
+        if detect_output() == "pipe":
+            l_print_t(PIPE_CMD_IN, f"{command}")
+            if cmd["ctx"] != P_UNKNOWN:
+                l_print_t(PIPE_CTX_IN, f"{cmd['ctx']}")
+            if cmd["ns"] != P_UNKNOWN:
+                l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+            if cmd["kind"] != P_UNKNOWN:
+                l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+            if cmd["kc"] != P_UNKNOWN:
+                l_print_t(PIPE_KC_IN, f"{cmd['kc']}")
+            if cmd["name"] != P_UNKNOWN:
+                l_print_t(PIPE_NAME_IN, f"{cmd['name']}")
+            pass_output_format(args)
+            l_print_t(PIPE_NOTE_IN, "appending --verbs=get,list")
+            exec_args = ["kubectl"] + args[1:] + ["--verbs=get,list"]
+        else:  # cmd api resources no input pipe, no output pipe, just execute
+            exec_args = ["kubectl"] + args[1:]
+        system_exec(" ".join(exec_args))
+
+
+def command_cgc_pipe_in(command, args, cmd):
+    """command  config get-context pipe in handler"""
+    position = []
+    content = {}
+    columns = []
+    line_num = 0
+    p_in = set_pipe_input()
+    for line in standard_input:  # sys.stdin:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            line_num = 0
+            continue
+        if p_in["cmd"] not in ["kc-inject", P_UNKNOWN]:
+            l_print_t(
+                P_ERROR,
+                f"Illegal pipe pass: from {p_in['cmd']} to config_get-contexts",
+            )
+            stream_helper()
+            break
+        if p_in["cmd"] in ["kc-inject", P_UNKNOWN]:  # command cgc, in kc-inject
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["FILE"] = p_in["kc"]
+                line_num += 1
+            if detect_output() == "pipe":
+                l_print_t(PIPE_CMD_IN, "config_get-contexts")
+                if content["FILE"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{content['FILE']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                else:
+                    if cmd["oo"] != P_UNKNOWN:
+                        l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+                pass_output_format(args)
+            exec_args = ["kubectl"]
+            if command == "cgc":
+                if content["FILE"] != P_UNKNOWN:
+                    exec_args += ["--kubeconfig", content["FILE"], "config", "get-contexts",]
+                else:
+                    exec_args += ["config", "get-contexts"]
+            else:
+                if content["FILE"] != P_UNKNOWN:
+                    exec_args += ["--kubeconfig", content["FILE"]]
+                exec_args += args[1:]
+            system_exec(" ".join(exec_args))
+
+
+def command_cgc(command, args, cmd):
+    """command config get-contexts handler"""
+    if detect_input() == "fifo":
+        command_cgc_pipe_in(command, args, cmd)
+    else:
+        if detect_output() == "pipe":
+            l_print_t(PIPE_CMD_IN, "config_get-contexts")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+            pass_output_format(args)
+        if command == "cgc":
+            if cmd["oo"] != P_UNKNOWN:
+                exec_args = ["kubectl", cmd["oo"], "config", "get-contexts"]
+            else:
+                exec_args = ["kubectl", "config", "get-contexts"]
+        else:
+            exec_args = ["kubectl"] + args[1:]
+        system_exec(" ".join(exec_args))
+
+
+def command_kc_inject(command, args, cmd, extracted_args_position):
+    """inject more than one kubeconfig into pipe stream"""
+    if detect_input() == "fifo":
+        l_print_e(P_WARNING, f"Illegal pipe pass: to {command}, pipe input ignored")
+    else:
+        if detect_output() == "pipe":
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, cmd["oo"])
+            l_print_t(PIPE_CMD_IN, f"{command}")
+            l_print_t(PIPE_OPT_IN, " ".join(args[extracted_args_position[2]:]))
+        pass_output_format(args)
+        out_list = []
+        for i in args[extracted_args_position[2]:]:
+            if os.path.exists(i):
+                out_list.append(i)
+            else:
+                l_print_e(P_WARNING, f"file {i} does not exist")
+        if out_list:
+            print("FILE")
+        for i in out_list:
+            print(i)
+
+
+def command_yaml_inject():
+    """inject context and kubeconfig into yaml"""
+    p_in = set_pipe_input()
+    plugin_content = True
+    for line in sys.stdin.readline():
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            plugin_content = True
+            if line.startswith(f"#{PLUGIN_NAME}:{PIPE_CTX_IN}: "):
+                p_in = detect_in_plugin_content(p_in, line)
+        else:
+            if plugin_content and p_in["ctx"] != P_UNKNOWN:
+                print(f"---\ncontext: {p_in['ctx']}\n", end="")
+            if plugin_content and p_in["kc"] != P_UNKNOWN:
+                print(f"---\nkubeconfig: {p_in['kc']}\n", end="")
+            plugin_content = False
+            print(line, end="")
+
+
+def command_json_inject():
+    """injecting context or kubeconfig in json"""
+    inject = ""
+    line = sys.stdin.readline()
+    p_in = {}
+    while line:
+        newline = sys.stdin.readline()
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            if line.startswith(f"#{PLUGIN_NAME}:{PIPE_CTX_IN}: "):
+                p_in = detect_in_plugin_content(p_in, line)
+                if p_in["ctx"] != P_UNKNOWN:
+                    inject = '"context": "' + p_in["ctx"] + '",'
+                if p_in["kc"] != P_UNKNOWN:
+                    inject = '"kubeconfig": "' + p_in["ctx"] + '",'
+        else:
+            if line == "{\n" and inject:
+                print("{\n    " + inject)
+            elif line == "}\n":
+                if newline:
+                    print(line[:-1])
+                else:
+                    print(line[:-1])
+            else:
+                print(line, end="")
+        line = newline
+
+
+def command_others_pipe_in(command, args, extracted_args_position, get_flags):
+    """handling pipe in for get/extract/sh/describe ... and plugins"""
+    position = []
+    columns = []
+    line_num = 0
+    p_in = set_pipe_input()
+    if len(args) > extracted_args_position[1] + 1:  # kind
+        p_in["obj"] = args[extracted_args_position[1] + 1]
+    prev_p_in = set_pipe_input()
+    for line in standard_input:  # sys.stdin:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            line_num = 0
+            continue
+        if p_in["cmd"] not in [
+            "config_get-contexts",
+            "get",
+            "api-resources",
+            "top",
+            "kc-inject",
+            P_UNKNOWN,
+        ] and not p_in["cmd"].startswith("plugin:"):
+            l_print_t(
+                P_ERROR,
+                f"Illegal pipe pass: from {p_in['cmd']} to {command}",
+            )
+            stream_helper()
+            break
+        if p_in["cmd"] in ["kc-inject", P_UNKNOWN]:  # command cgc, in kc-inject
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["FILE"] = p_in["kc"]
+                line_num += 1
+            if detect_output() == "pipe":
+                l_print_t(PIPE_CMD_IN, "config_get-contexts")
+                if content["FILE"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{content['FILE']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                pass_output_format(args)
+            exec_args = ["kubectl"]
+            if content["FILE"] != P_UNKNOWN:
+                exec_args += ["--kubeconfig", content["FILE"]]
+            exec_args += args[1:]
+            system_exec(" ".join(exec_args))
+            continue
+        if p_in["cmd"] == "config_get-contexts":  # command get, cgc
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["NAME"] = p_in["ctx"]
+            if (
+                    "cmd" in p_in
+                    and p_in["cmd"] != P_UNKNOWN
+                    and "IN_CMD" not in content
+            ):
+                content["IN_CMD"] = p_in["cmd"]
+            if "NAME" in content:
+                p_in["ctx"] = content["NAME"]
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+        elif p_in["cmd"] == "get":  # in cmd get, prev get
+            if p_in["format"] in [P_DEFAULT, "wide"]:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+                if (
+                        line_num > 2
+                        and p_in["nsed"] == "false"
+                        and p_in["get"] == "ns"
+                ):
+                    continue
+                if (
+                        "cmd" in p_in
+                        and p_in["cmd"] != P_UNKNOWN
+                        and "IN_CMD" not in content
+                ):
+                    content["IN_CMD"] = p_in["cmd"]
+                    p_in["name"] = P_UNKNOWN
+                if p_in["cmd"] != P_UNKNOWN:
+                    if "NAME" in content:
+                        if p_in["kind"] in ["ns", "namespace"]:
+                            content["NAMESPACE"] = content["NAME"]
+                            content["NS"] = content["NAME"]
+                        else:
+                            if p_in["get"] != P_UNKNOWN:
+                                content[p_in["get"].upper()] = content[
+                                    "NAME"
+                                ]
+                        p_in["name"] = content["NAME"]
+                    if "KIND" not in content and p_in["kind"] != P_UNKNOWN:
+                        content["KIND"] = p_in[
+                            "kind"
+                        ]
+                if "KIND" in content:  # override value from pipe
+                    p_in["kind"] = content["KIND"]
+                if (
+                        "NAME" in content
+                ):  # fixing kubectl non standard output for storageClass
+                    if (
+                            p_in["kind"] == "StorageClass"
+                            and " (default)" in content["NAME"]
+                    ):
+                        p_in["name"] = content["NAME"][0:-10]
+                    else:
+                        p_in["name"] = content["NAME"]
+                if "NAMESPACE" in content:
+                    p_in["ns"] = content["NAMESPACE"]
+            elif (
+                    p_in["format"] == "name"
+            ):  # name does not support kind, nsed
+                l_print_t(P_ERROR, "{command} format 'name' not supported")
+                break
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            # if more than one event like kctl api-resource apears,
+            # like EventSomething, this will not work, we need split by , and for each
+            if ("event" in p_in["kind"].lower() and "NAME" not in content
+                    and p_in["name"] == P_UNKNOWN):
+                # skip multiple get of events, as they are non selectable by name
+                if line_num > 2:
+                    continue
+                # skip name if we are on first line for events
+                to_exec = to_exec.replace("{{name}}", "")  # there is no name
+            else:
+                to_exec = to_exec.replace("{{name}}", p_in["name"])
+            to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+        elif p_in["cmd"] == "api-resources":  # in cmd get
+            if p_in["format"] in [P_DEFAULT, "wide"]:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+                if (
+                        "cmd" in p_in
+                        and p_in["cmd"] != P_UNKNOWN
+                        and "IN_CMD" not in content
+                ):
+                    content["IN_CMD"] = p_in["cmd"]
+                p_in["name"] = P_UNKNOWN
+                if "NAME" in content:
+                    p_in["name"] = content["NAME"]
+                p_in["kind"] = P_UNKNOWN
+                if "KIND" in content:
+                    p_in["kind"] = content["KIND"]
+                p_in["nsed"] = P_UNKNOWN
+                if "NAMESPACED" in content:
+                    p_in["nsed"] = content["NAMESPACED"]
+            elif (
+                    p_in["format"] == "name"
+            ):  # name does not support kind, nsed
+                l_print_t(
+                    P_ERROR, f"{command} format 'name' not supported"
+                )
+                break
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if p_in["kind"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+            if p_in["name"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{name}}", p_in["name"])
+            if detect_output() == "pipe":  # command get , in api-r
+                if (
+                        p_in["cmd"] != P_UNKNOWN
+                        and prev_p_in["cmd"] != p_in["cmd"]
+                ):
+                    l_print_t(PIPE_CMD_IN, f"{command}")
+                    prev_p_in["cmd"] = p_in["cmd"]
+                    # p_in["obj"] -> cmd["name"]
+                if (
+                        p_in["obj"] != P_UNKNOWN
+                        and p_in["obj"] != "{{kind}}"
+                        and prev_p_in["obj"] != p_in["obj"]
+                ):
+                    l_print_t(PIPE_GET_IN, f"{p_in['obj']}")
+                    prev_p_in["obj"] = p_in["obj"]
+                if (
+                        p_in["ctx"] != P_UNKNOWN
+                        and prev_p_in["ctx"] != p_in["ctx"]
+                ):
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                    prev_p_in["ctx"] = p_in["ctx"]
+                if (
+                        p_in["ns"] != P_UNKNOWN
+                        and prev_p_in["ns"] != p_in["ns"]
+                ):
+                    l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
+                    prev_p_in["ns"] = p_in["ns"]
+                if (
+                        p_in["nsed"] != P_UNKNOWN
+                        and prev_p_in["nsed"] != p_in["nsed"]
+                ):
+                    l_print_t(PIPE_NSED_IN, f"{p_in['nsed']}")
+                    prev_p_in["nsed"] = p_in["nsed"]
+                if (
+                        p_in["kind"] != P_UNKNOWN
+                        and prev_p_in["kind"] != p_in["kind"]
+                ):
+                    l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
+                    prev_p_in["kind"] = p_in["kind"]
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                if get_flags:
+                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                pass_output_format(
+                    args
+                )  # TO CONSIDER should w tack prev_p_in['format']
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+        else:  # command get : unknown in cmd, best effort
+            if line_num == 0 and line.isupper():
+                line_num += 1
+                position, columns = read_header_line(line)
+                continue
+            if line_num == 0 and p_in["cmd"] == "top":
+                line_num += 1
+                modified_line = line.upper()
+                modified_line = modified_line.replace("(", "_")
+                modified_line = modified_line.replace(")", " ")
+                modified_line = modified_line.replace("%", "P")
+                position, columns = read_header_line(modified_line)
+                continue
+            if line_num == 0 and p_in["cmd"] == "get" and "event" in p_in["kind"].lower():
+                line_num += 1
+                modified_line = line.upper()
+                modified_line = modified_line.replace("LAST SEEN", "LAST_SEEN")
+                position, columns = read_header_line(modified_line)
+                continue
+            content = read_row_from_line(position, columns, line)
+            line_num += 1
+            if (
+                    "cmd" in p_in
+                    and p_in["cmd"] != P_UNKNOWN
+                    and "IN_CMD" not in content
+            ):
+                content["IN_CMD"] = p_in["cmd"]
+            if "CONTEXT" in content:
+                p_in["ctx"] = content["CONTEXT"]
+            if "NAMESPACE" in content:
+                p_in["ns"] = content["NAMESPACE"]
+            if "KIND" in content:
+                p_in["kind"] = content["KIND"]
+            if "NAME" in content:
+                p_in["name"] = content["NAME"]
+            if (
+                    p_in["ctx"] == P_UNKNOWN
+                    and p_in["ns"] == P_UNKNOWN
+                    and p_in["kind"] == P_UNKNOWN
+                    and p_in["name"] == P_UNKNOWN
+            ):
+                # cmd get : no recognized format, best effort failed
+                l_print_t(
+                    P_ERROR,
+                    "not enough input: CONTEXT, NAMESPACE, KIND, NAME",
+                )
+                break
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if p_in["name"] != "<none>" and p_in["name"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{name}}", p_in["name"])
+            if p_in["kind"] != "<none>" and p_in["kind"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+            continue
+
+
+def command_others(command, args, cmd, extracted_args_position, get_flags, plugins):
+    """handling get,sh,explain,describe ... and plugins"""
+    if detect_input() == "fifo":
+        command_others_pipe_in(command, args, extracted_args_position, get_flags)
+    else:  # command get, no input pipe
+        if detect_output() == "pipe":
+            if command in plugins:
+                l_print_t(PIPE_CMD_IN, f"plugin:{command}")
+            else:
+                l_print_t(PIPE_CMD_IN, f"{command}")
+            if cmd["ctx"] != P_UNKNOWN:
+                l_print_t(PIPE_CTX_IN, f"{cmd['ctx']}")
+            if cmd["kind"] != P_UNKNOWN:
+                l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
+            if cmd["name"] != P_UNKNOWN:
+                l_print_t(PIPE_NAME_IN, f"{cmd['name']}")
+            if cmd["ns"] != P_UNKNOWN:
+                l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+            if cmd["kc"] != P_UNKNOWN:
+                l_print_t(PIPE_KC_IN, f"{cmd['kc']}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+            if get_flags:
+                l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            pass_output_format(args)
+            exec_args = ["kubectl"] + args[1:]
+        else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
+            exec_args = ["kubectl"] + args[1:]
+        system_exec(" ".join(exec_args))
+
+
+def command_kctl_generators_pipe_in(command, args, extracted_args_position, get_flags):
+    """handling pipe in for get/extract/sh/describe ... and plugins"""
+    position = []
+    columns = []
+    content = {}
+    multiple_in = False
+    line_num = -1
+    p_in = set_pipe_input()
+    if len(args) > extracted_args_position[1] + 1:  # kind
+        p_in["obj"] = args[extracted_args_position[1] + 1]
+    prev_p_in = set_pipe_input()
+    for line in standard_input:  # sys.stdin:
+        if multiple_in and line == "\n":  # case of get svc,pod there is a blank line break
+            line_num = 0  # reload headers
+            position = []
+            columns = {}
+            continue
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            line_num = 0
+            continue
+        if line_num == 2 and P_IN_DEBUG:
+            l_print_e(P_DEBUG_IN, p_in)
+        if ',' in p_in["kind"]:
+            multiple_in = True
+        if not multiple_in and p_in["cmd"] not in [
+            "config_get-contexts",
+            "get",
+            "api-resources",
+            "top",
+            "kc-inject",
+            P_UNKNOWN,
+        ] and not p_in["cmd"].startswith("plugin:"):
+            l_print_t(
+                P_ERROR,
+                f"Illegal pipe pass: from {p_in['cmd']} to {command}",
+            )
+            stream_helper()
+            return
+        if p_in["cmd"] in ["kc-inject", P_UNKNOWN]:  # command cgc, in kc-inject
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["FILE"] = p_in["kc"]
+                line_num += 1
+            if detect_output() == "pipe":
+                l_print_t(PIPE_CMD_IN, "config_get-contexts")
+                if content["FILE"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{content['FILE']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                pass_output_format(args)
+            exec_args = ["kubectl"]
+            if content["FILE"] != P_UNKNOWN:
+                exec_args += ["--kubeconfig", content["FILE"]]
+            exec_args += args[1:]
+            system_exec(" ".join(exec_args))
+            continue
+        if p_in["cmd"] == "config_get-contexts":  # command get, cgc
+            if p_in["format"] == P_DEFAULT:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+            elif p_in["format"] in ["name", P_UNKNOWN]:
+                p_in["ctx"] = line[:-1]
+                content["NAME"] = p_in["ctx"]
+            if (
+                    "cmd" in p_in
+                    and p_in["cmd"] != P_UNKNOWN
+                    and "IN_CMD" not in content
+            ):
+                content["IN_CMD"] = p_in["cmd"]
+            if "NAME" in content:
+                p_in["ctx"] = content["NAME"]
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if detect_output() == "pipe":  # command get, in cgc
+                l_print_t(PIPE_CMD_IN, f"{command}")
+                if (
+                        p_in["ns"] != P_UNKNOWN
+                        and prev_p_in["ns"] != p_in["ns"]
+                ):
+                    l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
+                    prev_p_in["ns"] = p_in["ns"]
+                if (
+                        p_in["ctx"] != P_UNKNOWN
+                        and prev_p_in["ctx"] != p_in["ctx"]
+                ):
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                    prev_p_in["ctx"] = p_in["ctx"]
+                if (
+                        p_in["kind"] != P_UNKNOWN
+                        and prev_p_in["kind"] != p_in["kind"]
+                ):
+                    l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
+                    prev_p_in["kind"] = p_in["kind"]
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                if get_flags:
+                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+            continue
+        if p_in["cmd"] == "get":  # in cmd get, prev get
+            if p_in["format"] in [P_DEFAULT, "wide"]:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+                if (
+                        line_num > 2
+                        and p_in["nsed"] == "false"
+                        and p_in["get"] == "ns"
+                ):
+                    continue
+                if (
+                        "cmd" in p_in
+                        and p_in["cmd"] != P_UNKNOWN
+                        and "IN_CMD" not in content
+                ):
+                    content["IN_CMD"] = p_in["cmd"]
+                    p_in["name"] = P_UNKNOWN
+                if p_in["cmd"] != P_UNKNOWN:
+                    if "NAME" in content:
+                        if p_in["kind"] in ["ns", "namespace"]:
+                            content["NAMESPACE"] = content["NAME"]
+                            content["NS"] = content["NAME"]
+                        else:
+                            if p_in["get"] != P_UNKNOWN:
+                                content[p_in["get"].upper()] = content[
+                                    "NAME"
+                                ]
+                        p_in["name"] = content["NAME"]
+                    if "KIND" not in content and p_in["kind"] != P_UNKNOWN:
+                        content["KIND"] = p_in[
+                            "kind"
+                        ].split("/")[0]
+                if "KIND" in content:  # override value from pipe
+                    p_in["kind"] = content["KIND"]
+                # TO CONSIDER other way of doing same would be sto split
+                # command to multiple single kind commands (get svc,pod)
+                # like separate command for svc, separate for pod
+                if multiple_in and "NAME" in content:
+                    if "/" in content["NAME"]:
+                        line_split = content["NAME"].split('/')
+                        if line_split[0] == "namespace":
+                            content["NAMESPACE"] = line_split[1]
+                        if line_split[0] == "node":
+                            del content["NAMESPACE"]
+                            content["NODE"] = line_split[1]
+                        content["NAME"] = line_split[1]
+                        content["KIND"] = line_split[0]
+                if "NAME" in content:
+                    # fixing kubectl non standard output for storageClass
+                    if (
+                            p_in["kind"] == "StorageClass"
+                            and " (default)" in content["NAME"]
+                    ):
+                        p_in["name"] = content["NAME"][0:-10]
+                    else:
+                        p_in["name"] = content["NAME"]
+                if "NAMESPACE" in content:
+                    p_in["ns"] = content["NAMESPACE"]
+                elif p_in["ns"] and p_in["ns"] != P_UNKNOWN:
+                    content["IN_NAMESPACE"] = p_in["ns"]
+                    content["IN_NS"] = p_in["ns"]
+            elif (
+                    p_in["format"] == "name"
+            ):  # name does not support kind, nsed
+                l_print_t(P_ERROR, "{command} format 'name' not supported")
+                break
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+                p_in_to_environ(p_in)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if ("event" in p_in["kind"].lower() and p_in["cmd"] == "get"
+                    and p_in["name"] == P_UNKNOWN):
+                if line_num > 2:
+                    continue
+                to_exec = to_exec.replace("{{name}}", "")  # there is no name
+                l_print_e(P_WARNING, "ignoring multiple get on events, as there is no name")
+            else:
+                to_exec = to_exec.replace("{{name}}", p_in["name"])
+            to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+            if detect_output() == "pipe":  # command get, in get
+                l_print_t(PIPE_CMD_IN, f"{command}")
+                if (
+                        p_in["ns"] != P_UNKNOWN
+                        and prev_p_in["ns"] != p_in["ns"]
+                ):
+                    l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
+                    prev_p_in["ns"] = p_in["ns"]
+                if (
+                        p_in["ctx"] != P_UNKNOWN
+                        and prev_p_in["ctx"] != p_in["ctx"]
+                ):
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                    prev_p_in["ctx"] = p_in["ctx"]
+                if (
+                        p_in["kind"] != P_UNKNOWN
+                        and prev_p_in["kind"] != p_in["kind"]
+                ):
+                    l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
+                    prev_p_in["kind"] = p_in["kind"]
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                if get_flags:
+                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                exec_words = to_exec.split()
+                no_header_present = "--no-headers" in exec_words
+                pass_output_format(args)
+                # if unusual output is used then force headers ie remove no-headers
+                if no_header_present:
+                    to_exec = to_exec.replace("--no-headers", "")
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+            continue
+        if p_in["cmd"] == "api-resources":  # in cmd get
+            if p_in["format"] in [P_DEFAULT, "wide"]:
+                if line_num == 0 and line.isupper():
+                    line_num += 1
+                    position, columns = read_header_line(line)
+                    continue
+                content = read_row_from_line(position, columns, line)
+                line_num += 1
+                if (
+                        "cmd" in p_in
+                        and p_in["cmd"] != P_UNKNOWN
+                        and "IN_CMD" not in content
+                ):
+                    content["IN_CMD"] = p_in["cmd"]
+                p_in["name"] = P_UNKNOWN
+                if "NAME" in content:
+                    p_in["name"] = content["NAME"]
+                p_in["kind"] = P_UNKNOWN
+                if "KIND" in content:
+                    p_in["kind"] = content["KIND"]
+                p_in["nsed"] = P_UNKNOWN
+                if "NAMESPACED" in content:
+                    p_in["nsed"] = content["NAMESPACED"]
+            elif (
+                    p_in["format"] == "name"
+            ):  # name does not support kind, nsed
+                l_print_t(
+                    P_ERROR, f"{command} format 'name' not supported"
+                )
+                break
+            if command == "sh":
+                to_check = " ".join(args[2:])
+                content_to_environ(content)
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+            else:
+                to_check = " ".join(["kubectl"] + args[1:])
+            to_exec = generate_to_exec(p_in, to_check)
+            if p_in["kind"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+            if p_in["name"] != P_UNKNOWN:
+                to_exec = to_exec.replace("{{name}}", p_in["name"])
+            if detect_output() == "pipe":  # command get , in api-r
+                if (
+                        p_in["cmd"] != P_UNKNOWN
+                        and prev_p_in["cmd"] != p_in["cmd"]
+                ):
+                    l_print_t(PIPE_CMD_IN, f"{command}")
+                    prev_p_in["cmd"] = p_in["cmd"]
+                    # p_in["obj"] -> cmd["name"]
+                if (
+                        p_in["obj"] != P_UNKNOWN
+                        and p_in["obj"] != "{{kind}}"
+                        and prev_p_in["obj"] != p_in["obj"]
+                ):
+                    l_print_t(PIPE_GET_IN, f"{p_in['obj']}")
+                    prev_p_in["obj"] = p_in["obj"]
+                if (
+                        p_in["ctx"] != P_UNKNOWN
+                        and prev_p_in["ctx"] != p_in["ctx"]
+                ):
+                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                    prev_p_in["ctx"] = p_in["ctx"]
+                if (
+                        p_in["ns"] != P_UNKNOWN
+                        and prev_p_in["ns"] != p_in["ns"]
+                ):
+                    l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
+                    prev_p_in["ns"] = p_in["ns"]
+                if (
+                        p_in["nsed"] != P_UNKNOWN
+                        and prev_p_in["nsed"] != p_in["nsed"]
+                ):
+                    l_print_t(PIPE_NSED_IN, f"{p_in['nsed']}")
+                    prev_p_in["nsed"] = p_in["nsed"]
+                if (
+                        p_in["kind"] != P_UNKNOWN
+                        and prev_p_in["kind"] != p_in["kind"]
+                ):
+                    l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
+                    prev_p_in["kind"] = p_in["kind"]
+                if p_in["kc"] != P_UNKNOWN:
+                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+                if p_in["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+                if get_flags:
+                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                pass_output_format(
+                    args
+                )  # TO CONSIDER should w tack prev_p_in['format']
+            to_exec = replace_exec_line_with_content(to_exec, content)
+            system_exec(to_exec)
+            continue
+        # command get : unknown in cmd, best effort
+        if line_num == 0 and line.isupper():
+            line_num += 1
+            position, columns = read_header_line(line)
+            continue
+        if line_num == 0 and p_in["cmd"] == "top":
+            line_num += 1
+            modified_line = line.upper()
+            modified_line = modified_line.replace("(", "_")
+            modified_line = modified_line.replace(")", " ")
+            modified_line = modified_line.replace("%", "_")
+            position, columns = read_header_line(modified_line)
+            continue
+        if line_num == 0 and p_in["cmd"] == "get" and "event" in p_in["kind"].lower():
+            line_num += 1
+            modified_line = line.upper()
+            modified_line = modified_line.replace("LAST SEEN", "LAST_SEEN")
+            position, columns = read_header_line(modified_line)
+            continue
+        content = read_row_from_line(position, columns, line)
+        line_num += 1
+        if (
+                "cmd" in p_in
+                and p_in["cmd"] != P_UNKNOWN
+                and "IN_CMD" not in content
+        ):
+            content["IN_CMD"] = p_in["cmd"]
+        if "CONTEXT" in content:
+            p_in["ctx"] = content["CONTEXT"]
+        if "NAMESPACE" in content:
+            p_in["ns"] = content["NAMESPACE"]
+        if "KIND" in content:
+            p_in["kind"] = content["KIND"]
+        if "NAME" in content:
+            p_in["name"] = content["NAME"]
+        if (
+                p_in["ctx"] == P_UNKNOWN
+                and p_in["ns"] == P_UNKNOWN
+                and p_in["kind"] == P_UNKNOWN
+                and p_in["name"] == P_UNKNOWN
+        ):
+            # cmd get : no recognized format, best effort failed
+            l_print_t(
+                P_ERROR,
+                "not enough input: CONTEXT, NAMESPACE, KIND, NAME",
+            )
+            break
+        if command == "sh":
+            to_check = " ".join(args[2:])
+            content_to_environ(content)
+        elif args[0].split("/")[-1] == P_SHORTCUT:
+            to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
+        else:
+            to_check = " ".join(["kubectl"] + args[1:])
+        to_exec = generate_to_exec(p_in, to_check)
+        if p_in["name"] != "<none>" and p_in["name"] != P_UNKNOWN:
+            to_exec = to_exec.replace("{{name}}", p_in["name"])
+        if p_in["kind"] != "<none>" and p_in["kind"] != P_UNKNOWN:
+            to_exec = to_exec.replace("{{kind}}", p_in["kind"])
+        if detect_output() == "pipe":  # command get, no in cmd
+            l_print_t(PIPE_CMD_IN, f"{command}")
+            if (
+                    p_in["ns"] != P_UNKNOWN
+                    and prev_p_in["ns"] != p_in["ns"]
+            ):
+                l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
+                prev_p_in["ns"] = p_in["ns"]
+            if (
+                    p_in["ctx"] != P_UNKNOWN
+                    and prev_p_in["ctx"] != p_in["ctx"]
+            ):
+                l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
+                prev_p_in["ctx"] = p_in["ctx"]
+            if (
+                    p_in["kind"] != P_UNKNOWN
+                    and prev_p_in["kind"] != p_in["kind"]
+            ):
+                l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
+                prev_p_in["kind"] = p_in["kind"]
+            if p_in["kc"] != P_UNKNOWN:
+                l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
+            if p_in["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
+            if get_flags:
+                l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            exec_words = to_exec.split()
+            no_header_present = "--no-headers" in exec_words
+            pass_output_format(args)
+            if no_header_present:
+                to_exec = to_exec.replace("--no-headers", "")
+        to_exec = replace_exec_line_with_content(to_exec, content)
+        system_exec(to_exec)
+        continue
+
+
+def command_kctl_generators(command, args, cmd, extracted_args_position, get_flags, plugins):
+    """handling get,sh,explain,describe ... and plugins"""
+    if detect_input() == "fifo":
+        command_kctl_generators_pipe_in(command, args, extracted_args_position, get_flags)
+    else:  # command get, no input pipe
+        if detect_output() == "pipe":
+            if command in plugins:
+                l_print_t(PIPE_CMD_IN, f"plugin:{command}")
+            else:
+                l_print_t(PIPE_CMD_IN, f"{command}")
+            if cmd["ctx"] != P_UNKNOWN:
+                l_print_t(PIPE_CTX_IN, f"{cmd['ctx']}")
+            if cmd["kind"] != P_UNKNOWN:
+                l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
+            if cmd["name"] != P_UNKNOWN:
+                l_print_t(PIPE_NAME_IN, f"{cmd['name']}")
+            if cmd["ns"] != P_UNKNOWN:
+                l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+            if cmd["kc"] != P_UNKNOWN:
+                l_print_t(PIPE_KC_IN, f"{cmd['kc']}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+            if get_flags:
+                l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            pass_output_format(args)
+            to_check = " ".join(["kubectl"] + args[1:])
+            if command == "sh":
+                to_check = " ".join(args[2:])
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl"] + args[1:])
+            exec_args = to_check
+            system_exec(exec_args)
+        else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
+            if command == "sh":
+                to_check = " ".join(args[2:])
+            elif args[0].split("/")[-1] == P_SHORTCUT:
+                to_check = " ".join(["kubectl"] + args[1:])
+            exec_args = to_check
+            system_exec(exec_args)
+
+
+def command_filter(args):
+    """command filter, filers line based on specific colum name"""
+    position = []
+    columns = []
+    content = {}
+    line_num = -1
+    header_line = ""
+    if len(args) < 4:
+        l_print_e(P_WARNING, f"filter format is [+|-] COLUMN_NAME regexp{len(args)}")
+        return
+    exclude = False
+    if args[1] == "-":
+        exclude = True
+    if args[1] == "+":
+        exclude = False
+    if args[1] not in ["-", "+"]:
+        l_print_e(P_WARNING, f"filter format is [+|-] COLUMN_NAME regexp {args[1]}")
+        return
+    column_to_inspect = args[2]
+    p_in = set_pipe_input()
+    for line in standard_input:  # sys.stdin:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            if detect_output() == "pipe":
+                print(line, end="")
+            line_num = 0
+            continue
+        if line_num == 0 and line.isupper():
+            line_num += 1
+            position, columns = read_header_line(line)
+            header_line = line  # print no heders if there are no matches
+            continue
+        content = read_row_from_line(position, columns, line)
+        line_num += 1
+        if column_to_inspect in content:
+            match = False
+            for item in args[3:]:
+                if re.search(item, content[column_to_inspect]):
+                    match = True
+            if exclude and not match:
+                if header_line:
+                    print(header_line, end="")
+                    header_line = ""
+                print(line, end="")
+            if not exclude and match:
+                if header_line:
+                    print(header_line, end="")
+                    header_line = ""
+                print(line, end="")
+        else:
+            pass
+
+
+def command_unknown(command, args):
+    """handling unknown command"""
+    if command != "config":  # otherwise we have command that we cover completely
+        l_print_t(P_WARNING, f"unhandled command, trying default kubectl {command}")
+        exec_args = ["kubectl"] + args[1:]
+        system_exec(" ".join(exec_args))
+    else:
+        l_print_t(
+            P_WARNING,
+            f"unrecognized command {command}, not prohibited, not allowed",
+        )
+        exec_args = ["kubectl"] + args[1:]
+        system_exec(" ".join(exec_args))
+
+
+def q_evaluate(op1, op2, operator):
+    """evaluate operator, and operands"""
+    q_check = False
+    if type(op1) is type(op2):
+        l_print_e(P_WARNING, f" input types are not same: {type(op1)} != {type(op2)}")
+        return False
+    if operator == 'eq' and op1 == op2:
+        q_check = True
+    if operator == 'ne' and op1 != op2:
+        q_check = True
+    if operator == 'le' and op1 <= op2:
+        q_check = True
+    if operator == 'lt' and op1 < op2:
+        q_check = True
+    if operator == 'gt' and op1 > op2:
+        q_check = True
+    if operator == 'ge' and op1 >= op2:
+        q_check = True
+    if operator == 're':
+        if not isinstance(op1, str):
+            op1 = str(op1)
+        if not isinstance(op2, str):
+            op2 = str(op2)
+        match = re.search(op2, op1)
+        if match and match.group(0):
+            q_check = True
+    if operator == '?':
+        l_print_e("debug?",
+                  f"left operand: {op1}, right operand: {op2}")
+    return q_check
+
+
+def command_question(args):
+    """handling test on column like AGE #1 > 5d"""
+    position = []
+    columns = []
+    line_num = 0
+    header_line = ""
+    if not ((len(args) == 4 and args[3] == "??") or (len(args) == 3 and args[2] == "??")):
+        if len(args) < 4:
+            l_print_e(P_WARNING, f"filter format is ? COLUMN_NAME #<n> operator #<n>|value {args}")
+            return
+        if args[1] != '?':
+            l_print_e(P_WARNING, "filter format is ? COLUMN_NAME"
+                      f"#<n> operator #<n>|value {len(args)}"
+                      )
+            return
+    column_to_inspect = args[2]
+    q_operator = ""
+    q_operand1 = ""
+    q_operand2 = ""
+    if len(args) == 6:
+        q_operator = args[4]
+        q_operand1 = args[3]
+        q_operand2 = args[5]
+    p_in = set_pipe_input()
+    for line in standard_input:  # sys.stdin:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            if detect_output() == "pipe":
+                print(line, end="")
+            line_num = 0
+            continue
+        if line_num == 0:
+            line_num += 1
+            modified_line = line.upper()
+            modified_line = modified_line.replace("(", "_")
+            modified_line = modified_line.replace(")", " ")
+            modified_line = modified_line.replace("%", "P")
+            if modified_line.isupper():
+                position, columns = read_header_line(modified_line)
+                header_line = line
+                continue
+            l_print_e(P_DEBUG, "unrecognized headers")
+            break
+        value = {}
+        content = read_row_from_line(position, columns, line)
+        line_num += 1
+        skip = False
+        parse_debug = False
+        if (len(args) == 4 and args[3] == "??") or (len(args) == 3 and args[2] == "??"):
+            l_print_e("debug?", f"line content: {content}")
+            parse_debug = True
+        if column_to_inspect not in columns:
+            for i in columns:
+                if re.match(f".*{column_to_inspect}.*", i):
+                    column_to_inspect = i
+                    break
+        if column_to_inspect in content:
+            to_check = content[column_to_inspect]
+            q_type = P_UNKNOWN
+            # age like format
+            match = re.match(r"^(\d+)$", to_check)
+            if match and match.group(0):
+                value[0] = match.group(0)
+                value[1] = int(match.group(1))
+                q_type = "NUMBER"
+                skip = True
+            if not skip:
+                match = re.match(r"^([a-zA-Z]+)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    q_type = "WORD"
+                    skip = True
+            if not skip:
+                match = re.match(r"^(\d+)(\.)*(\d*)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = float(match.group(0))
+                    q_type = "FLOAT"
+                    skip = True
+            if not skip:
+                match = re.match(r"^([a-z][a-z0-9-.]*)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    q_type = "RESOURCE"
+                    skip = True
+            if not skip:
+                # role,and more complex types
+                reg = r"([a-z][a-z0-9-.]+)[:|/]*([a-z0-9-.]+)[:|/]*([a-z0-9-.]*)"
+                match = re.match(reg, to_check)
+                if (match and match.group(0)
+                        and "CPU" not in column_to_inspect
+                        and "MEMORY" not in column_to_inspect):
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value[2] = match.group(2)
+                    value[3] = match.group(3)
+                    value['str'] = match.group(0)
+                    q_type = "URI"
+                    skip = True
+            if not skip:
+                match = re.match(r"(\d+d)*(\d+h)*(\d+m)*(\d+s)*", to_check)
+                if match and match.group(0) and "CPU" not in column_to_inspect:
+                    days = 0
+                    hours = 0
+                    minutes = 0
+                    seconds = 0
+                    if match.group(1):
+                        days = int(match.group(1)[:-1])
+                        value['d'] = days
+                    if match.group(2):
+                        hours = int(match.group(2)[:-1])
+                        value['h'] = hours
+                    if match.group(3):
+                        minutes = int(match.group(3)[:-1])
+                        value['m'] = minutes
+                    if match.group(4):
+                        seconds = int(match.group(4)[:-1])
+                        value['s'] = seconds
+                    value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+                    q_type = 'AGE'
+                    skip = True
+            if not skip:
+                # ready like format
+                match = re.match(r"(\d+)/(\d+)", to_check)
+                if match:
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value[2] = match.group(2)
+                    q_type = 'READY'
+                    skip = True
+            if not skip:
+                match = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z", to_check)
+                if match:
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value['y'] = int(match.group(1))
+                    value[2] = match.group(2)
+                    value['m'] = int(match.group(2))
+                    value[3] = match.group(3)
+                    value['d'] = int(match.group(3))
+                    value[4] = match.group(4)
+                    value['H'] = int(match.group(4))
+                    value[5] = match.group(5)
+                    value['M'] = int(match.group(5))
+                    value[6] = match.group(6)
+                    value['S'] = int(match.group(6))
+                    q_type = 'DATE'
+                    skip = True
+            if not skip:
+                # NodeMetrics WINDOW
+                match = re.match(r"(\d+d)*(\d+h)*(\d+m)*((\d*.)*\d+s)*", to_check)
+                if match and match.group(0) and "CPU" not in column_to_inspect:
+                    days = int(match.group(1)[:-1])
+                    hours = int(match.group(2)[:-1])
+                    minutes = int(match.group(3)[:-1])
+                    seconds = float(match.group(4)[:-1])
+                    value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+                    q_type = 'NODEMETRICS'
+                    skip = True
+            if not skip:
+                # restarts like format '2 (5d ago)'
+                match = re.match(r"^(\d+)( \((\d+)[y|d|h|m|s]{1} ago\))*$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)  # restarts
+                    value['str'] = match.group(0)  # full string
+                    value['int'] = int(match.group(1))
+                    value[1] = int(match.group(1))
+                    val3 = match.group(3)
+                    if val3 and len(val3) > 1:
+                        if val3[-1] == 'y':
+                            value[2] = 31536000 * int(val3[:-1])
+                            value['y'] = int(val3[:-1])
+                        if val3[-1] == 'd':
+                            value[2] = 86400 * int(val3[:-1])
+                            value['d'] = int(val3[:-1])
+                        if val3[-1] == 'h':
+                            value[2] = 3600 * int(val3[:-1])
+                            value['h'] = int(val3[:-1])
+                        if val3[-1] == 'm':
+                            value[2] = 60 * int(val3[:-1])
+                            value['m'] = int(val3[:-1])
+                        if val3[-1] == 's':
+                            value[2] = int(val3[:-1])
+                            value['s'] = int(val3[:-1])
+                    q_type = 'RESTARTS'
+                    skip = True
+            if not skip:
+                # ip address
+                reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+                reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                match = re.match(
+                    reg,
+                    to_check)
+                if match and match.group(0):
+                    match = re.match(r"^(\d+).(\d+).(\d+).(\d+)$", to_check)
+                    if match:
+                        value[0] = match.group(0)
+                        value[1] = match.group(1)
+                        value[2] = match.group(2)
+                        value[3] = match.group(3)
+                        value[4] = match.group(4)
+                        value['int'] = (((int(value['1']) * 256 + int(value['2'])) * 256
+                                         + int(value['3']) * 256 + int(value['4'])))
+                        q_type = 'IP'
+                        skip = True
+            if not skip:
+                # ip address : port
+                reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+                reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):"
+                reg += "(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?)$"
+                match = re.match(reg, to_check)
+                if match and match.group(0):
+                    match = re.match(r"^(\d+).(\d+).(\d+).(\d+):(\d+)$", to_check)
+                    if match and match.group(0):
+                        value[0] = match.group(0)
+                        value[1] = match.group(1)
+                        value[2] = match.group(2)
+                        value[3] = match.group(3)
+                        value[4] = match.group(4)
+                        value[5] = match.group(5)
+                        q_type = "TCPIP"
+                        skip = True
+            if not skip:
+                # PORTS 443/TCP
+                reg = r"(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?):(\w+)$"
+                match = re.match(reg, to_check)
+                if match and match.group(0):
+                    match = re.match(r"(\d+)/(\w+)", to_check)
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value[2] = match.group(2)
+                    q_type = "PORTS"
+                    skip = True
+            if not skip:
+                #  v1.32.0  r"^v(\d+).(\d+).(\d+)
+                match = re.match(r"^v(\d+).(\d+).(\d+)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value[2] = match.group(2)
+                    value[3] = match.group(3)
+                    q_type = "VERSION"
+                    skip = True
+            if not skip:
+                match = re.match(r"^(\d+)([K|M|G|T|P|E]i)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value[2] = match.group(2)
+                    part1 = int(match.group(1))
+                    part2 = match.group(2)
+                    n_bytes = 0
+                    if part2 == 'Ki':
+                        n_bytes = 1024 * part1
+                    if part2 == 'Mi':
+                        n_bytes = 1024 * 1024 * part1
+                    if part2 == 'Gi':
+                        n_bytes = 1024 * 1024 * 1024 * part1
+                    if part2 == 'Ti':
+                        n_bytes = 1024 * 1024 * 1024 * 1024 * part1
+                    if part2 == 'Pi':
+                        n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * part1
+                    if part2 == 'Ei':
+                        n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * 1024 * part1
+                    value['int'] = n_bytes
+                    q_type = "MEMORY"
+                    skip = True
+            if not skip:
+                match = re.match(r"^(\d+)%$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value['int'] = int(match.group(1))
+                    q_type = 'PERCENT'
+                    skip = True
+            if not skip:
+                match = re.match(r"^(\d+)(m)$", to_check)
+                if "CPU" in column_to_inspect and match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = match.group(1)
+                    value['int'] = int(match.group(1))
+                    if match.group(2):
+                        value[2] = match.group(2)
+                    else:
+                        value['int'] = value['int'] * 1000
+                    q_type = "CPU"
+            if not skip:
+                # float
+                match = re.match(r"^(\d+)e([+-]*\d+)$", to_check)
+                if match and match.group(0):
+                    value[0] = match.group(0)
+                    value[1] = int(match.group(1))
+                    value[2] = int(match.group(2))
+                    value['float'] = value[1] * 10 ** value[2]
+                    q_type = "FLOAT"
+            if not skip:
+                l_print_e(P_ERROR, f"unknown format of a column {column_to_inspect}, assume string")
+                value[0] = to_check
+                q_type = "STRING"
+            if parse_debug:
+                l_print_e("debug?", column_to_inspect)
+                l_print_e("debug?", f"matched fields: {value}")
+                l_print_e("debug?", f"type: {q_type}")
+                continue
+            if q_operator not in ['eq', 'ne', 'le', 'ge', 'gt', 'lt', '?', 're']:
+                l_print_e(P_ERROR, f"unknown operator {q_operator} or not enough args")
+            else:
+                if q_operand1[0] != '?' and q_operand2[0] != '?':
+                    l_print_e(P_ERROR, "at least one operand should be internal ie start with ?")
+                    break
+                if q_operand1[0] == '?' and q_operand2[0] == '?':
+                    # internal comparison
+                    # XTODO do try no guarantee that operand can be converted to int
+                    qo1_idx = q_operand1[1:]
+                    try:
+                        qo1_idx = int(q_operand1[1:])
+                    except ValueError:
+                        qo1_idx = q_operand1[1:]
+                    try:
+                        qo2_idx = int(q_operand2[1:])
+                    except ValueError:
+                        qo2_idx = q_operand2[1:]
+                    if qo1_idx in value and qo2_idx in value:
+                        if q_evaluate(value[qo1_idx], value[qo2_idx], q_operator):
+                            if header_line:
+                                print(header_line, end="")
+                                header_line = ""
+                            print(line, end="")
+                    else:
+                        l_print_e(P_ERROR, f"no value offset {qo1_idx} or"
+                                  f"{qo2_idx} in value f{value}"
+                                  )
+                elif q_operand1[0] == '?' or q_operand2[0] == '?':
+                    if q_operand1[0] == '?':
+                        internal_operand = q_operand1[1:]
+                        external_operand = q_operand2
+                    else:
+                        internal_operand = q_operand2[1:]
+                        external_operand = q_operand1
+                    if internal_operand in value:
+                        qo_int = value[internal_operand]
+                    elif re.match(r"^(\d+)$", internal_operand) and int(internal_operand) in value:
+                        qo_int = value[int(internal_operand)]
+                    else:
+                        l_print_e("error?", f"operand {internal_operand}"
+                                  f"not found in values {value}"
+                                  )
+                        continue
+                    test_result = False
+                    if isinstance(qo_int, int):
+                        # check if external is int
+                        match = re.match(r"^(\d+)$", external_operand)
+                        if match:
+                            test_result = q_evaluate(qo_int, int(external_operand), q_operator)
+                    elif isinstance(qo_int, float):
+                        # check if external is float
+                        match = re.match(r"^(\d+).(\d)*$", external_operand)
+                        if match:
+                            test_result = q_evaluate(qo_int, float(external_operand), q_operator)
+                    else:
+                        # string
+                        test_result = q_evaluate(qo_int, external_operand, q_operator)
+                    if test_result:
+                        if header_line:
+                            print(header_line, end="")
+                            header_line = ""
+                        print(line, end="")
+                else:
+                    l_print_e(P_ERROR, f"unknown operands {q_operator}")
+        else:
+            l_print_e(P_WARNING, f"no column {column_to_inspect} in present columns")
+            print(line, end="")
+
+
+def command_clean(cmd):
+    """clean specific headers or plugin specific lines"""
+    if cmd["kind"] == "headers":
+        for line in standard_input:
+            if not line.isupper() and not line.startswith(f"#{PLUGIN_NAME}:"):
+                print(line, end="")
+    else:
+        for line in standard_input:
+            if not line.startswith(f"#{PLUGIN_NAME}:"):
+                print(line, end="")
+
+
+def command_uniq(args, extracted_args_position):
+    """uniq input passed in named column"""
+    position = []
+    columns = []
+    content = {}
+    line_num = -1
+    p_in = set_pipe_input()
+    seen = []
+    if len(extracted_args_position) > 2 and len(args) > extracted_args_position[2]:
+        column_name = args[extracted_args_position[2]]
+    else:
+        l_print_e(P_ERROR, "not enough arguments, specify column name")
+        return
+    for line in standard_input:  # sys.stdin:
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            print(line, end="")
+            line_num = 0
+            seen = []
+            continue
+        if line_num == 0 and line.isupper():
+            line_num += 1
+            position, columns = read_header_line(line)
+            print(line, end="")
+            continue
+        content = read_row_from_line(position, columns, line)
+        line_num += 1
+        if column_name in content:
+            if content[column_name] not in seen:
+                print(line, end="")
+                seen.append(content[column_name])
+        elif line_num == 2:
+            l_print_e(P_ERROR, "no column {column_name} in current input")
+
+
+def exclude_list(all_cmds, kctl_allowed):
+    """excludes elements of first array commands"""
+    prohibited = []
+    for item in all_cmds:
+        if item not in kctl_allowed:
+            prohibited.append(item)
+    return prohibited
+
+
+def extract_cmd(args, kctl_options):
+    """extract command line parameters"""
+    get_flags = ""
+    cmd = set_cmd_input()
+    extracted, extracted_args_position, cmd = extract_args(args, cmd, kctl_options)
+
+    if len(extracted) <= 1:
+        l_print_t(P_ERROR, "empty command or not recognized command")
+        return -1
+
+    if extracted[1] == "get":
+        get_extracted, get_flags = extract_get_options(cmd["ctx"], args, kctl_options)
+        if len(get_extracted) > 2:
+            cmd["kind"] = get_extracted[2]
+        if len(get_extracted) > 3 and cmd["name"] == P_UNKNOWN:
+            cmd["name"] = get_extracted[3]
+
+    if len(extracted) > 2 and extracted[1] == "config":
+        cmd["kind"] = extracted[2]
+
+    return extracted, extracted_args_position, cmd, get_flags
+
+
+def main_loop(args):
+    """main function"""
+
+    if len(args) <= 1:
+        l_print_e(P_ERROR, "not enough parameters try running same command with argument -help")
+        return -1
+
+    all_kubectl_cmds = fetch_kubectl_cmds() + ['help']
+    kctl_generators = [
+        "config",
+        "api-resources",
+        "get",
+        "top",
+    ]
+    kctl_consumers = exclude_list(all_kubectl_cmds, kctl_generators)
+    plugins = available_plugins()
+
+    internal = [
+        "sh",
+        "+",
+        "-",
+        "?",
+        "clean",
+        "env-vars",
+        "yaml-inject",
+        "json-inject",
+        "cgc",  # command mapping
+        "api-r",  # command mapping
+        "kc-inject",
+        "-help",
+        "help",
+        "uniq",
+        "examples",
+    ]
+
+    all_commands = all_kubectl_cmds + internal + plugins
+
+    kctl_options = fetch_kubectl_options()
+    extracted, extracted_args_position, cmd, get_flags = extract_cmd(args, kctl_options)
+    command = extracted[1]
+
+    if command not in all_commands:
+        l_print_e(P_ERROR, f"unknown command {command}")
+        return -2
+
+    if (command == "config" and cmd["kind"] == "get-contexts") or command == "cgc":  # generator
+        command_cgc(command, args, cmd)
+    elif command == "kc-inject":  # generator
+        command_kc_inject(command, args, cmd, extracted_args_position)
+    elif command in ["+", "-"]:  # filter
+        command_filter(args)
+    elif command == "?":
+        command_question(args)
+    elif command == "-help":  # help
+        instruction_help(internal, kctl_generators)
+        stream_helper()
+    elif command == "help":
+        command_unknown(command, args)
+        l_print_e(P_WARNING, f"for {PLUGIN_NAME} help, use -help")
+    elif command == "env-vars":
+        env_vars_helper()
+    elif command == "examples":  # examples
+        examples_help()
+    elif command == "clean":  # filter
+        command_clean(cmd)
+    elif command == "uniq":
+        command_uniq(args, extracted_args_position)
+    elif command == "yaml-inject":  # injector
+        command_yaml_inject()
+    elif command == "json-inject":  # injector
+        command_json_inject()
+    elif command in ["api-resources", "api-r"]:  # generator
+        command_api_r(command, args, cmd, extracted_args_position)
+    elif command in kctl_generators + ["sh"]:  # generators
+        # check multiple get kinds, run them separately
+        # currently handled without splitting, consider removing this edge case handling
+        if command == "get" and "kind" in cmd and "," in cmd["kind"]:
+            prev_cmd_kind = cmd["kind"]
+            for item in prev_cmd_kind.split(","):
+                cmd["kind"] = item
+                if len(extracted_args_position) > 2:
+                    args[extracted_args_position[2]] = item
+                command_kctl_generators(command, args, cmd, extracted_args_position,
+                                        get_flags, plugins)
+        else:
+            command_kctl_generators(command, args, cmd, extracted_args_position, get_flags, plugins)
+    elif command in kctl_consumers + plugins:
+        command_others(command, args, cmd, extracted_args_position, get_flags, plugins)
+    else:  # no command recognized
+        command_unknown(command, args)
+    return 0
+
+
+signal.signal(signal.SIGINT, int_signal_handler)
+signal.signal(signal.SIGTERM, term_signal_handler)
+
+standard_input = StdinRecollector()
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main_loop(sys.argv))
+    except BrokenPipeError as e:
+        print(f"BrokenPipe:OutputOf: {" ".join(sys.argv)} , {e}", flush=True, file=sys.stderr)
+    finally:
+        sys.stdout = None
