@@ -124,7 +124,7 @@ not return named column resutls
 ## getting object that od not have labels
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>' | grep -v ^#line
 
-# dumping all objects from all contexts within ~/.kube/config file
+## dumping all objects from all contexts within ~/.kube/config file
 time /bin/bash -c "
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}} "
 
@@ -133,6 +133,6 @@ or
  time /bin/bash -c "
 _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A|_ get {{kind}} {{name}} "
 
-# getting env from all containers within test-run namespace
+## getting env from all containers within test-run namespace
  _ -n test-run top pod --containers | _ exec {{POD}} -c {{NAME}} -- env
 
