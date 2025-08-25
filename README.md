@@ -1,13 +1,13 @@
 # A tool for pipe streamed kubectl execution
 This tool works on top of kubectl, and uses kubectl named column output.
-It is able to pass important parameteres between executions within a piped sequence.
+It is able to pass important parameters between executions within a piped sequence.
 
 It can be used as kubectl plugin: kubectl-line.
 I link this plugin as kubectl-_ so I can use kubectl _ .
 Also I link kubectl-line to a binary named _, so I can use _ directly without need to type
 kubectl. This setup provides minimal typing overhead.
 
-Whith above setup, 
+With above setup, 
 ``` bash
 kubectl line get ns 
 ```
@@ -15,15 +15,15 @@ should work as same as
 ``` bash
 kubectl _ get ns
 ```
-or just 
+or simpler 
 ``` bash
 _ get ns
 ```
 
-While you could link kubectl to _ , this plugin provide ability to execute
-with pipe sequence and few more features.
-
-I use this plugin as direct kubectl extension wrapper.
+I use this plugin as a direct kubectl extension wrapper.
+This tool should act as kubectl, respecting plugins, while
+extending it for few more commands and ability to run in
+piped sequence.
 
 
 # Why ?
@@ -40,9 +40,9 @@ for i in $LIST ; do
 done
 ```
 
-Sometimes I would delete/restart pod, sometimes I would exec, or edit or remove or add label.
-Usual setup would be to get a list of items and then to operate on list item.
-One could use xargs but it won't make command line simpler.
+Sometimes I would delete/restart pod, sometimes I would exec, or edit or remove or add labels.
+Usual pattern of such executions is to get a list of items and then to operate on each item.
+One could use xargs but it won't make the command line simpler.
 
 
 With this tool I can:
@@ -65,23 +65,25 @@ _ --context minikube api-resources | \
  _ get {{kind}} {{name}} -o yaml > /tmp/all_objects
 ```
 
-In example above first command context field (along with result table) is being passed to second command.
-Context field is then passed from second command third, along with kind (from api-resources) and namesapace field from second command output. Third command does not have to specify --context, namespace would be correctly set to a namespace of a resources listed within second command. Third command will have
+In the example above, first command context field (along with the result table) is being passed to the second command.
+Context field is then passed from second command to third, along with kind (from api-resources) and namespace field from second command output. Third command does not have to specify --context, namespace would be correctly set to a namespace of resources listed within second command. Third command will have
 kind (resource kind, like pod, service ... ) and resource name filled within {{ }} values.
 left most _ get {{kind}} {{name}} so you will get list of single item objects on output
 
 This tool will try to minimize repeating of parameters (--context, -n, --kubeconfig, or any other),
 on all kubectl commands within a pipe sequence.
 
-If you imagine how kubectl is being positioned as a command line tool, it is usually focused on exact final object/resource, weather it is a api resources list, or list of all kinds of objects, or some specific object.
+If you imagine how kubectl is being positioned as a command line tool, it is usually focused on the exact final object/resource, whether it is an api resources list, or list of all kinds of objects, or some specific object. Kubectl is a multilayer tool, capable of selecting kubeconfig file, context, resource kind, resource, resource labels, but it can't run on multiple layers or verticals. It is oriented on doing something
+on a specific set of resources. Single run can't cover multiple kube-configs , multiple contexts, 
+multiple namespaces, while it can have multiple resoruce kinds, multiple resources.
 
-One can't easily get dump of all objects, on all clusters within all kubeconfig files. It is possible
+One can't easily get dump of all the objects, on all clusters within all kubeconfig files. It is possible
 but you need to parse, chunk, iterate in bash, or any other tool.
 
-With this tool you can get all objects more easily. If you don't wan't all of objects, if you like some subset of available resources, you can easily filter out (or filter in) those you are focused on.
+With this tool you can get all objects more easily. If you don't want all of objects, if you like some subset of available resources, you can easily filter out (or filter in) those you are focused on.
 
 If you access to a few dozens of kubernetes clusters, within multiple kube-config files,
-you might need to check layout of some object on all clusters, or to check are all looking identical.
+you might need to check the layout of some object on all clusters, to spot differences.
 
 With this tool pipe approach you can, for example, dump all cluster/context objects from all kubeconfig files
 ``` bash
@@ -92,9 +94,9 @@ _ get {{kind}} -A | \
 _ get {{kind}} {{name}} -p yaml
 ```
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
-and cgc instead config get-contexts (to speed up typing), and few additional command for filtering.
+and cgc instead config get-contexts (to speed up typing), and few additional commands for filtering.
 
-With supported shortucts you could type same in abbrevated form:
+With supported shortcuts you could type same in abbreviated form:
 ``` bash
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
 _ cgc | \
@@ -173,7 +175,7 @@ and {{kind}} will be matched.
 
 
 If you want to explicitly execute some field you
-can use some of {{ }} tags, explained in section below.
+can use some of {{ }} tags, explained in the section below.
 
 
 # Available {{ }} tags
@@ -218,27 +220,28 @@ Also for any named column like ROLE, AGE, NAME, NAMESPACE ... in previous pipe r
 one can address those like {{ROLE}}, {{AGE}}, {{NAME}}, {{NAMESPACE}}.
 
 This tool relies on column names, but tries to be flexible on any column name format it gets,
-so as long as you keep column names with capital letters, you can use custom-columns formating of output.
+so as long as you keep column names with capital letters, you can use custom-columns formatting of output.
 For example if you specify
 ``` bash
 -o custom-columns=ABCD:.metadata.name,XYZ:.metadata.namespace,OPQ:.kind
 ```
-you should be able to use those column with their custom names.
+you should be able to use those columns with their custom names.
+Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND and such.
 
 
-# flow arangements
+# Flow arrangements
 
-## startes:
-Starters are those command that you can start pipe sequence with:
+## Starters:
+Starters are those commands that you can start pipe sequence with:
 
   _ kc-inject <file1> <file2>
     injects multiple kubectl config files in pipe stream
     ( kubectl is limited to only one config file )
 
-  _ cgc  : shortcut for confifg get-contexts
+  _ cgc  : shortcut for config get-contexts
 
   _ config get-contexts
-    injects all avalable context from confifle
+    injects all available context from conf files
 
   _ api-r  : shortcut for api-resources
 
@@ -250,10 +253,10 @@ Starters are those command that you can start pipe sequence with:
   _ top : displays required usage 
 
 
-## filters:
+## Filters:
 Group of commands dedicated to filtering between pipes:
 
-Filter in or filter out specifc column name on given regexp:
+Filter in or filter out specific column name on given regexp:
   _ + <column_name> <regex>
     include lines that match
   _ - <column_name> <regex>
@@ -263,7 +266,7 @@ Filter in or filter out specifc column name on given regexp:
 Filters out specific column with expression (gt,lt,le,ge,eq,ne,re):
   _ ? <column_name> <arg1> <operator> <arg2> 
 
-Makes specific column values uniq (like api-resources might return duplicate resource kind):
+Makes specific column values unique (like api-resources might return duplicate resource kind):
   _ uniq <column_name>
 
 
@@ -299,7 +302,7 @@ not return named column results
    show some examples
 
   _ env-vars
-   show environment varibles that can be set to troubleshoot/debug execution of this tool
+   show environment variables that can be set to troubleshoot/debug execution of this tool
 
 # natural flow pipe sequences
 
@@ -354,4 +357,9 @@ on field READY X/Y, compares (not equal) first number (X) to second (Y) number o
 ``` bash
 _ get pod -A | _ ? READY _? 
 ```
- 
+
+## filtering out kubectl api-resources APIVERSION filed
+``` bash
+_ api-r | _ + APIVERSION k8s.io
+```
+
