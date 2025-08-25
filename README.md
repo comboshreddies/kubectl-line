@@ -1,13 +1,13 @@
 # A tool for pipe streamed kubectl execution
-This tool works on top of kubectl, and uses kubectl named column output.
+This tool works on top of kubectl, and for running it relies on kubectl named column output.
 It is able to pass important parameters between executions within a piped sequence.
 
 It can be used as kubectl plugin: kubectl-line.
-I link this plugin as kubectl-_ so I can use kubectl _ .
+I link this plugin as kubectl-_ so I can use kubectl _ , for less typing.
 Also I link kubectl-line to a binary named _, so I can use _ directly without need to type
 kubectl. This setup provides minimal typing overhead.
 
-With above setup, 
+With above setup ( linking kubectl-line to kubectl-_ and _ )
 ``` bash
 kubectl line get ns 
 ```
@@ -20,7 +20,7 @@ or simpler
 _ get ns
 ```
 
-I use this plugin as a direct kubectl extension wrapper.
+I use this plugin as a direct kubectl wrapper.
 This tool should act as kubectl, respecting plugins, while
 extending it for few more commands and ability to run in
 piped sequence.
@@ -32,7 +32,7 @@ I would usually run something like:
 ``` bash
 kubectl --context cluster1 -n some-ns get pod --show-labels
 ```
-and then
+observe output, and then select some subset of resources, and execute something.
 ``` bash
 LIST=$(kubectl --context clst1 -n some get pod --no-headers -l app=some| awk '{print $1 }') \
 for i in $LIST ; do
@@ -47,12 +47,12 @@ One could use xargs but it won't make the command line simpler.
 
 With this tool I can:
 ``` bash
-_ --context cluster1 -n some-ns get pod -l app=some | \
+_ --context clst1 -n some get pod -l app=some | \
  _ delete pod {{name}}
 ```
 or if you use it as kubectl plugin
 ``` bash
-kubectl line --context cluser1 -n some-ns get pod -l app=some | \
+kubectl line --context clst1 -n some get pod -l app=some | \
  kubectl line delete pod {{name}}
 ```
 
