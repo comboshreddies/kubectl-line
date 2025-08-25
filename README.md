@@ -300,7 +300,7 @@ _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A|_ get {{kind}} {{name
  _ -n test-run top pod --containers | _ exec {{POD}} -c {{NAME}} -- env
 ```
 
-## getting all pods with not all pods ready
+## getting all pods with not all containers ready
 ``` bash
 _ get pod -A | _ ? READY ?1 ne ?2
 ```
