@@ -374,3 +374,8 @@ _ get pod -A | _ ? READY _?
 _ api-r | _ + APIVERSION k8s.io
 ```
 
+# Requirements
+
+This tool uses all modules that were already included in python3.
+The only requirement is to have python3.
+
