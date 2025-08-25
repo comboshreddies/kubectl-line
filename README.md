@@ -325,17 +325,18 @@ Following execution pipe streams are allowed:
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>' | grep -v ^#line
 ```
 
-## dumping all objects for all clusters ie contexts from ~/.kube/config file
+## dumping all objects for all clusters ie contexts from ~/.kube/west and ~/.kube/east file
 ``` bash
 time /bin/bash -c "
- _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}} "
+ _ kc-inject ~/.kube/west ~/.kube/east |_ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}} "
 ```
 
-or
+
+## dumping all objects for all contexts in default ~/.kube/config file
 
 ``` bash
  time /bin/bash -c "
-_ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A|_ get {{kind}} {{name}} "
+_ cgc|_ api-r|_ get {{kind}} -A|_ get {{kind}} {{name}} "
 ```
 
 ## getting env from all containers within test-run namespace
@@ -349,3 +350,8 @@ _ get pod -A | _ ? READY ?1 ne ?2
 ```
 on field READY X/Y, compares (not equal) first number (X) to second (Y) number of READY X/Y
 
+## getting what value keys (?x) are available for filtering READY column 
+``` bash
+_ get pod -A | _ ? READY _? 
+```
+ 
