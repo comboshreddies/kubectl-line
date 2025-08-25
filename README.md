@@ -236,14 +236,17 @@ Starters are those command that you can start pipe sequence with:
     ( kubectl is limited to only one config file )
 
   _ cgc  : shortcut for confifg get-contexts
+
   _ config get-contexts
     injects all avalable context from confifle
 
   _ api-r  : shortcut for api-resources
+
   _ api-resources
     shows all available resources
 
   _ get : list required resources
+
   _ top : displays required usage 
 
 
