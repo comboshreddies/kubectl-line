@@ -58,11 +58,10 @@ on all kubectl commands within a pipe sequence.
 
 If you imagine how kubectl is being positioned as a command line tool, it is usually focused on exact final object, weather it is a api resources list, or list of all kinds of objects, or some specific object.
 One can't easily get dump of all objects, on all clusters within all kubeconfig files.
-And if you don't wan't all of objects, you can easily filter out those you are focused on.
+And if you don't wan't all of objects, if you like some subset of available resources, you can easily filter out those you are focused on.
 
-
-I access to more than few dozens of kubernetes clusters, and sometimes I would like to check
-layout of some object on all clusters. 
+If you access to a few dozens of kubernetes clusters, within multiple kube-config files,
+you might need to check layout of some object on all clusters, or to check are all looking identical.
 
 With this tool pipe approach you can, for example, dump all cluster/context objects from all kubeconfig files
 ``` bash
@@ -75,7 +74,16 @@ _ get {{kind}} {{name}} -p yaml
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
 and cgc instead config get-contexts (to speed up typing), and few additional command for filtering.
 
-With some additional tool specific commands you can additionally inject (extend) format
+With supported shortucts you could type same in abbrevated form:
+``` bash
+_ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
+_ cgc | \
+_ api-r | \
+_ get {{kind}} -A | \
+_ get {{kind}} {{name}} -p yaml
+```
+
+With few tool specific commands you can additionally inject (extend) format
 of yaml/json manifest files with specific kubernetes-config file and context attributes.
 ``` bash
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
