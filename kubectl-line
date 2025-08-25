@@ -1091,7 +1091,8 @@ def command_yaml_inject():
     """inject context and kubeconfig into yaml"""
     p_in = set_pipe_input()
     plugin_content = True
-    for line in sys.stdin.readline():
+    line = sys.stdin.readline()
+    while line:
         if line.startswith(f"#{PLUGIN_NAME}:"):
             plugin_content = True
             if line.startswith(f"#{PLUGIN_NAME}:{PIPE_CTX_IN}: "):
@@ -1103,6 +1104,7 @@ def command_yaml_inject():
                 print(f"---\nkubeconfig: {p_in['kc']}\n", end="")
             plugin_content = False
             print(line, end="")
+        line = sys.stdin.readline()
 
 
 def command_json_inject():
