@@ -1,10 +1,15 @@
 # A tool for pipe streamed kubectl execution
 This tool works on top of kubectl named column, being able to
-pass importat parameteres between executions in pipe sequence
+pass important parameteres between executions within a piped sequence.
 
-It can be used as kubectl plugin - kubectl-line,
-or you can link it as a binary named _ , and you don't have to 
-repeat kubectl line on every execution, you just type _.
+It can be used as kubectl plugin - kubectl-line.
+I link this plugin as kubectl-_ , and also I link kubectl-line to a binary named _ .
+Idea is to use the least ammount of typing.
+
+So kubectl line get ns should work as same as kubectl _ get ns, or just _ get ns.
+While you could link kubectl to _ , this plugin provide few more features.
+
+I use this plugin as direct kubectl extension wrapper.
 
 
 # Why ?
@@ -25,8 +30,6 @@ Sometimes I would delete/restart pod, sometimes I would exec, or edit or remove 
 Usual setup would be to get a list then to operate on list item.
 One could use xargs but it won't make command line simpler.
 
-
-I usually use this plugin as direct kubectl wrapper, as I link kubectl-line to /usr/local/bin/_
 
 With this tool I can:
 ``` bash
@@ -57,7 +60,11 @@ If you imagine how kubectl is being positioned as a command line tool, it is usu
 One can't easily get dump of all objects, on all clusters within all kubeconfig files.
 And if you don't wan't all of objects, you can easily filter out those you are focused on.
 
-With this tool pipe approach you can for example dump all cluster/context objects from all kubeconfig files
+
+I access to more than few dozens of kubernetes clusters, and sometimes I would like to check
+layout of some object on all clusters. 
+
+With this tool pipe approach you can, for example, dump all cluster/context objects from all kubeconfig files
 ``` bash
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
 _ config get-contexts | \
@@ -66,7 +73,7 @@ _ get {{kind}} -A | \
 _ get {{kind}} {{name}} -p yaml
 ```
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
-and cgc instead config get-contexts, and few additional command for filtering.
+and cgc instead config get-contexts (to speed up typing), and few additional command for filtering.
 
 With some additional tool specific commands you can additionally inject (extend) format
 of yaml/json manifest files with specific kubernetes-config file and context attributes.
@@ -74,7 +81,7 @@ of yaml/json manifest files with specific kubernetes-config file and context att
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
 _ -n kube-system get pod etcd-minikube -o json | _ json_inject > /tmp/all.json
 ```
-Now each item in output file will have extended json format
+Now each item in output file will have extended json format with headers that look like:
 ``` bash
 {
     "context": "minikube",
@@ -97,13 +104,15 @@ _ config get-contexts | \
 _ -n kube-system get pod -l k8s-app=kube-dns | \
 _ get {{kind}} {{name}}  \> /tmp/{{ctx}}_{{kind}}_{{name}}.yaml
 ```
-Tags like {{ctx}} {{kind}}, {{name}}, if available are replaced.
+Tags like {{ctx}} {{kind}}, {{name}}, if availablei, are replaced.
+
 Given -n kube-system (context) and pod (kind) is silently passed via pipe stream,
 so last _ get {{kind}} {{name}} is executed as:
 kubectl --context {{ctx}} -n {{ns}} get {{kind}} {{name}}
 
 
 # Passing arguments between pipes
+
 If any parameter (like kubeconfig file, context, namespace) is being
 used on the previous pipe (to left) execution, it will be repeated
 on all other pipe executions (to the right)
