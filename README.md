@@ -277,7 +277,7 @@ Following execution pipe streams are allowed:
 
 # interesting examples to run
 
-## getting object that od not have labels
+## getting object that do not have labels
 ``` bash
  _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>' | grep -v ^#line
 ```
