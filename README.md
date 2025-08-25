@@ -233,6 +233,8 @@ Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND an
 
 ## Starters:
 Starters are those commands that you can start pipe sequence with:
+They either add some functionality (kc-inject) or are able to display
+some information that can be used in following pipe executions.
 
   _ kc-inject <file1> <file2>
     injects multiple kubectl config files in pipe stream
@@ -271,8 +273,7 @@ Makes specific column values unique (like api-resources might return duplicate r
 
 
 ## terminators:
-Group of commands that you will execute as last in pipe sequence:
-
+Group of commands that you will execute as last in pipe sequence.
   _ get
   get can also be terminator, as it can be starter
 
@@ -280,16 +281,22 @@ Group of commands that you will execute as last in pipe sequence:
    execute shell with available {{ }} tags and environment variables
 
   _ clean
-   cleans specific plugin # tags from output
+   cleans specific plugin # tags from input/output
 
   _ yaml-inject
   _ json-inject
    inject context and kubeconfig file used to get that object
    used after kubectl -o json or -o yaml
 
-flow terminator can be any other kubectl command (exec, logs, labels, ...)
-ie command that would break kubectl pipeline execution stream, or will
-not return named column results
+If you follow internal communication rules of this tool, you might make
+_ sh as not terminal command in sequence of piped executions of this tool,
+but it is not intended and not that easy. This tool is extendable.
+
+
+Flow terminator (last command in sequence of piped executions of this tool) can be 
+any other kubectl command (exec, logs, labels, ...) ie command that would break
+kubectl pipeline execution stream, or will not return named column results.
+
 
 ## helpers:
 
@@ -304,11 +311,15 @@ not return named column results
   _ env-vars
    show environment variables that can be set to troubleshoot/debug execution of this tool
 
+
 # natural flow pipe sequences
 
 You can't combine any pipe flow you might imagine, for example
-_ get | _ kc-inject
+``` bash
+_ get ns | _ kc-inject
+```
 would not make sense.
+
 
 Following execution pipe streams are allowed:
 
