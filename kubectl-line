@@ -1998,7 +1998,7 @@ def command_filter(args):
         if column_to_inspect in content:
             match = False
             for item in args[3:]:
-                if re.search(item, content[column_to_inspect]):
+                if re.match(item, content[column_to_inspect]):
                     match = True
             if exclude and not match:
                 if header_line:

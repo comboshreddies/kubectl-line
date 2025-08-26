@@ -1,10 +1,11 @@
 # A tool for pipe streamed kubectl execution
-This tool works on top of kubectl, and for running it relies on kubectl named column output.
-It is able to pass important parameters between executions within a piped sequence.
+This tool works on top of kubectl. It is able to pass important parameters
+between executions within a piped sequence.
+For running it relies on kubectl named column output.
 
 It can be used as kubectl plugin: kubectl-line.
 I link this plugin as kubectl-_ so I can use kubectl _ , for less typing.
-Also I link kubectl-line to a binary named _, so I can use _ directly without need to type
+Also I link kubectl-line to a file named _, so I can use _ directly without need to type
 kubectl. This setup provides minimal typing overhead.
 
 With above setup ( linking kubectl-line to kubectl-_ and _ )
@@ -21,18 +22,17 @@ _ get ns
 ```
 
 I use this plugin as a direct kubectl wrapper.
-This tool should act as kubectl, respecting plugins, while
-extending it for few more commands and ability to run in
-piped sequence.
+This tool should act as kubectl, respecting kubectl options and plugins, while
+extending it for few more commands and ability to run in piped sequence.
 
 
 # Why ?
 
-I would usually run something like:
+I often run something like:
 ``` bash
 kubectl --context cluster1 -n some-ns get pod --show-labels
 ```
-observe output, and then select some subset of resources, and execute something.
+observe output, and then select some subset of resources, and execute something on those.
 ``` bash
 LIST=$(kubectl --context clst1 -n some get pod --no-headers -l app=some| awk '{print $1 }') \
 for i in $LIST ; do
@@ -40,32 +40,36 @@ for i in $LIST ; do
 done
 ```
 
-Sometimes I would delete/restart pod, sometimes I would exec, or edit or remove or add labels.
+Sometimes I would delete or restart pod, sometimes I would exec, edit, remove or add labels.
 Usual pattern of such executions is to get a list of items and then to operate on each item.
 One could use xargs but it won't make the command line simpler.
 
 
 With this tool I can:
 ``` bash
-_ --context clst1 -n some get pod -l app=some | \
+_ -n some get pod -l app=some | \
  _ delete pod {{name}}
 ```
 or if you use it as kubectl plugin
 ``` bash
-kubectl line --context clst1 -n some get pod -l app=some | \
+kubectl line -n some get pod -l app=some | \
  kubectl line delete pod {{name}}
 ```
+or if you've linked kubectl-line to kubectl-_
+```bash
+kubectl _ -n some get pod -l app=some | \
+kubectl _ line delete pod {{name}}
+```
 
-
-I have a script that dumps all kubernetes objects for some cluster, but 
+I have a script that dumps all kubernetes objects from cluster, but 
 with this tool I can do dump with:
 ``` bash
-_ --context minikube api-resources | \
+_ --context mini api-resources | \
  _ get {{kind}} -A | \
  _ get {{kind}} {{name}} -o yaml > /tmp/all_objects
 ```
 
-In the example above, first command context field (along with the result table) is being passed to the second command.
+In the example above, first command context field (mini) is being passed (along with the result table) to the second command.
 Context field is then passed from second command to third, along with kind (from api-resources) and namespace field from second command output. Third command does not have to specify --context, namespace would be correctly set to a namespace of resources listed within second command. Third command will have
 kind (resource kind, like pod, service ... ) and resource name filled within {{ }} values.
 left most _ get {{kind}} {{name}} so you will get list of single item objects on output
@@ -73,21 +77,26 @@ left most _ get {{kind}} {{name}} so you will get list of single item objects on
 This tool will try to minimize repeating of parameters (--context, -n, --kubeconfig, or any other),
 on all kubectl commands within a pipe sequence.
 
-If you imagine how kubectl is being positioned as a command line tool, it is usually focused on the exact final object/resource, whether it is an api resources list, or list of all kinds of objects, or some specific object. Kubectl is a multilayer tool, capable of selecting kubeconfig file, context, resource kind, resource, resource labels, but it can't run on multiple layers or verticals. It is oriented on doing something
-on a specific set of resources. Single run can't cover multiple kube-configs , multiple contexts, 
-multiple namespaces, while it can have multiple resoruce kinds, multiple resources.
+If you imagine how kubectl is being positioned as a command line tool, it is usually focused on the exact final object/resource, whether it is an api resources list, or list of all kinds of objects, or some specific object. Kubectl is focused on specific cluster/namespace resource. 
 
-One can't easily get dump of all the objects, on all clusters within all kubeconfig files. It is possible
-but you need to parse, chunk, iterate in bash, or any other tool.
+Kubectl is a multilayer tool, capable of selecting context (from kubeconfig file), resource kind, resource, resource labels, but it can't run on multiple layers or vertical.
+Kubectl is oriented on doing something on a specific set of resources within pointed cluster and namespce. Single kubectl run can't cover multiple kube-configs, multiple contexts, multiple namespaces, while it can have multiple resoruce kinds, multiple resources - and it does a great job.
+
+With kubectl you can't easily get dump of all the objects, on all clusters within all kubeconfig files. It is possible but you need to parse, chunk, iterate in bash, or any other tool.
+You can do multiple kubectl runs, but then you have to wrap some scripting around kubectl.
 
 With this tool you can get all objects more easily. If you don't want all of objects, if you like some subset of available resources, you can easily filter out (or filter in) those you are focused on.
 
-If you access to a few dozens of kubernetes clusters, within multiple kube-config files,
-you might need to check the layout of some object on all clusters, to spot differences.
-
-With this tool pipe approach you can, for example, dump all cluster/context objects from all kubeconfig files
+If you access to a few dozens of kubernetes clusters, and you have multiple kube-config files,
+you might need to check the layout of same objects across multiple clusters, so you can differences.
 ``` bash
-_ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
+_ kc-inject ~/.kube/west ~/.kube/east | \
+_ -n kube-system get pod etcd-minikube -o json \> /tmp/{{ctx}}_{{ns}}_etcd.json
+```
+
+With this tool that supports piped executions you can, dump all cluster/context objects from selected kubeconfig files:
+``` bash
+_ kc-inject ~/.kube/europe ~/.kube/america | \
 _ config get-contexts | \
 _ api-resources | \
 _ get {{kind}} -A | \
@@ -96,13 +105,19 @@ _ get {{kind}} {{name}} -p yaml
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
 and cgc instead config get-contexts (to speed up typing), and few additional commands for filtering.
 
-With supported shortcuts you could type same in abbreviated form:
+With supported shortcuts you could type same example from above in abbreviated form:
 ``` bash
-_ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
+_ kc-inject ~/.kube/europe ~/.kube/america | \
 _ cgc | \
 _ api-r | \
 _ get {{kind}} -A | \
 _ get {{kind}} {{name}} -p yaml
+```
+
+If you have all contexts in single file you can filter contexts:
+``` bash
+_ cgc | + NAME '^.*[euro|america].*$' |\
+_ get ns
 ```
 
 With few tool specific commands you can additionally inject (extend) format
@@ -115,7 +130,7 @@ Now each item in output file will have extended json format with headers that lo
 ``` bash
 {
     "context": "minikube",
-    "kubeconfig" : "/Users/none/.kube/config",
+    "kubeconfig" : "/Users/none/.kube/east",
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
@@ -128,7 +143,7 @@ If you do not like to extend manifest, you can put objects in correctly named fi
 you can always use available {{ }} tags for example:
 ``` bash
 _ config get-contexts | \
-_ -n kube-system get pod -l k8s-app=kube-dns -o yaml \> /tmp/{{ctx}}_pod.yaml
+_ -n kube-system get pod -l k8s-app=kube-dns -o yaml \> /tmp/{{ctx}}_label_kube_dns_pods.yaml
 ```
 or
 ``` bash
@@ -174,19 +189,24 @@ _ --context minikube -n test-run get pods,svc | _ get {{kind}} {{name}}
 and {{kind}} will be matched.
 
 
-If you want to explicitly execute some field you
+If you want to explicitly use some field you
 can use some of {{ }} tags, explained in the section below.
 
 
 # Available {{ }} tags
 
+Overall tags that begin with ? mark are conditional, if they are not empty
+they will be shown, if they are empty they will be empty.
+Tags that have ?x are replaced with corresponding switch, or empty
+Tags without ?x: or ?: are either replaced or left as they are
+
 kubeconfig file related tags:
 
- ?x:kc -> conditional switch kubeconfig -> --kubeconfig config
+ ?x:kc -> conditional switch kubeconfig -> --kubeconfig config_file | ''
 
- ?:kc -> conditional kubeconfig -> config | ''
+ ?:kc -> conditional kubeconfig -> config_file | ''
 
- kc -> kubeconfig -> config
+ kc -> kubeconfig -> config_file | {{kc}}
 
 
 context related tags:
@@ -202,25 +222,26 @@ namespace related tags:
 
  ?x:ns - conditional switch namespace -> -n ns | '' 
 
- ?:ns - conditional namespace | ''
+ ?:ns - conditional namespace -> namespace | ''
 
- ns - namespace
+ ns - namespace -> namespce | {{ns}}
 
 
 kind tag: 
 
- kind -> kind
+ kind -> kind | {{kind}}
 
 name tag:
 
- name -> name
+ name -> name | {{name}}
 
 
 Also for any named column like ROLE, AGE, NAME, NAMESPACE ... in previous pipe result
-one can address those like {{ROLE}}, {{AGE}}, {{NAME}}, {{NAMESPACE}}.
+(previous pipe output that is input for currently executing pipe stage)
+one can address column names like {{ROLE}}, {{AGE}}, {{NAME}}, {{NAMESPACE}}.
 
 This tool relies on column names, but tries to be flexible on any column name format it gets,
-so as long as you keep column names with capital letters, you can use custom-columns formatting of output.
+so as long as you keep column names with all capital letters, you can use custom-columns formatting of output.
 For example if you specify
 ``` bash
 -o custom-columns=ABCD:.metadata.name,XYZ:.metadata.namespace,OPQ:.kind
@@ -230,6 +251,7 @@ Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND an
 
 
 # Flow arrangements
+
 
 ## Starters:
 Starters are those commands that you can start pipe sequence with:
