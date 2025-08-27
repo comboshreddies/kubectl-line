@@ -8,7 +8,7 @@ I link this plugin as kubectl-_ so I can use kubectl _ , for less typing.
 Also I link kubectl-line to a file named _, so I can use _ directly without need to type
 kubectl. This setup provides minimal typing overhead.
 
-With above setup ( linking kubectl-line to kubectl-_ and _ )
+With above setup (ie linked kubectl-line to kubectl-_ and _ )
 ``` bash
 kubectl line get ns 
 ```
@@ -20,13 +20,14 @@ or simpler
 ``` bash
 _ get ns
 ```
+This wrapper/plugin should behave same as kubectl if not used in piped sequence.
 
 I use this plugin as a direct kubectl wrapper.
 This tool should act as kubectl, respecting kubectl options and plugins, while
 extending it for few more commands and ability to run in piped sequence.
 
 
-# Why ?
+# Purpose of this tool ?
 
 I often run something like:
 ``` bash
@@ -61,12 +62,12 @@ _ -n some get pod -l app=some | \
 _ delete pod {{name}}
 ```
 
-I have a script that dumps all kubernetes objects from cluster, but 
+I have a script that dumps all kubernetes objects from a cluster, but 
 with this tool I can do dump with:
 ``` bash
 _ --context mini api-resources | \
  _ get {{kind}} -A | \
- _ get {{kind}} {{name}} -o yaml > /tmp/all_objects
+ _ get {{kind}} {{name}} -o yaml > /tmp/{{ns}}_{{kind}}_{{name}}.yaml 
 ```
 
 In the example above, first command context field (mini) is being passed (along with the result table) to the second command.
@@ -79,19 +80,26 @@ on all kubectl commands within a pipe sequence.
 
 If you imagine how kubectl is being positioned as a command line tool, it is usually focused on the exact final object/resource, whether it is an api resources list, or list of all kinds of objects, or some specific object. Kubectl is focused on specific cluster/namespace resource. 
 
-Kubectl is a multilayer tool, capable of selecting context (from kubeconfig file), resource kind, resource, resource labels, but it can't run on multiple layers or vertical.
-Kubectl is oriented on doing something on a specific set of resources within pointed cluster and namespce. Single kubectl run can't cover multiple kube-configs, multiple contexts, multiple namespaces, while it can have multiple resoruce kinds, multiple resources - and it does a great job.
+Kubectl does a great job. 
+Kubectl is oriented on doing something on a specific set of resources within pointed cluster and namespce. Single kubectl run can't cover multiple kube-configs, multiple contexts, multiple namespaces, while it can operate on multiple resoruce kinds, multiple resources on selected context and namespace.
+Kubectl is a multilayer tool, capable of selecting context (from kubeconfig file), resource kind, resource, resource labels, but it can't run on multiple layers of kubeconfig, contexts, namespaces.
 
-With kubectl you can't easily get dump of all the objects, on all clusters within all kubeconfig files. It is possible but you need to parse, chunk, iterate in bash, or any other tool.
+With kubectl you can't easily get dump of all the objects, on all clusters within all kubeconfig files in all namespaces. It is possible but you need to parse, chunk, iterate in some scripting tool.
 You can do multiple kubectl runs, but then you have to wrap some scripting around kubectl.
 
 With this tool you can get all objects more easily. If you don't want all of objects, if you like some subset of available resources, you can easily filter out (or filter in) those you are focused on.
 
 If you access to a few dozens of kubernetes clusters, and you have multiple kube-config files,
-you might need to check the layout of same objects across multiple clusters, so you can differences.
+you might need to check the layout of same objects across multiple clusters, so you can inspect differences.
 ``` bash
 _ kc-inject ~/.kube/west ~/.kube/east | \
-_ -n kube-system get pod etcd-minikube -o json \> /tmp/{{ctx}}_{{ns}}_etcd.json
+_ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
+```
+
+If you like to get any object that is labeled with component=etcd then
+```
+_ api-resources | \
+_ get {{kind}} -A -l component=etcd
 ```
 
 With piped executions you can, dump all cluster/context objects from selected kubeconfig files:
@@ -251,6 +259,9 @@ you should be able to use those columns with their custom names.
 Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND and such.
 
 
+Command @ does have special format for tags, it supports format
+{{item?if_item_exists:if_item_does_not_exist}}, where item is kc, ctx, ns, kind, name
+
 # Flow arrangements
 
 
@@ -317,6 +328,11 @@ Group of commands that you will execute as last in pipe sequence.
   _ json-inject
    inject context and kubeconfig file used to get that object
    used after kubectl -o json or -o yaml
+
+  _ @
+  will work only if previous output format is yaml or json, and it will
+  store file in specific templated directory
+
 
 If you follow internal communication rules of this tool, you might make
 _ sh execution not as a terminal command in sequence of piped executions of this tool,
@@ -415,6 +431,12 @@ _ get pod -A | _ ? RESTARTS ?seconds ge 600 | _ ? RESTARTS ?seconds le 1200
 ``` bash
 _ api-r | _ + APIVERSION k8s.io
 ```
+
+## storing all content of default context in structured directory
+``` bash
+_ api-r | _ get {{kind}} -A | _ get {{kind}} {{name}} -o yaml |   _ @ /tmp/CLSTR/{{ns?NS:NONS}}/{{?:ns}}/{{kind}}/{{name}}.yaml
+```
+
 
 # Requirements
 

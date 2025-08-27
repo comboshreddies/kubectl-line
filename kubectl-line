@@ -231,6 +231,7 @@ def instruction_help(instructions, kctl_generators):
     info = {
         "+": "select lines containing argument word, + <column_name> <argument> ...",
         "-": "remove lines containing argument word, - <column_name> <argument> ...",
+        "@": "redirects input to a output file being aware of input fields",
         "?": "include lines that match expression like ? AGE < 10d ",
         "api-r": "shortuct for api-resources",
         "cgc": "shortcut for config get-contexts kubectl command",
@@ -431,6 +432,8 @@ def detect_in_plugin_content(pin, line):
             pin["kc"] = line[len(PIPE_KC_IN) + 2: -1]
         elif line.startswith(f"{PIPE_OO_IN}: "):
             pin["oo"] = line[len(PIPE_OO_IN) + 2: -1]
+        elif line.startswith(f"{PIPE_NAME_IN}: "):
+            pin["name"] = line[len(PIPE_NAME_IN) + 2: -1]
         elif pin["cmd"] == "get" and line.startswith(f"{PIPE_OPT_IN}: "):
             if "opt" in pin:
                 pin["opt"] += line[len(PIPE_OPT_IN) + 2: -1]
@@ -718,11 +721,11 @@ def extract_get_options(context, args, kctl_opts):
             if (
                 args[i] == "-A"
             ):  # edge case -A does not take param, should be handled in some other way
-                flags += args[i]
+                flags += args[i] + " "
                 i += 1
                 continue
             if len(args) > i + 1:
-                flags += f"{args[i]} {args[i + 1]}"
+                flags += f"{args[i]} {args[i + 1]} "
                 i += 2
                 continue
         if "=" in args[i]:
@@ -732,7 +735,7 @@ def extract_get_options(context, args, kctl_opts):
                     i += 1
                     continue
                 if args[i][:eq_index] in get_opts:
-                    flags += args[i][eq_index + 1:]
+                    flags += args[i][eq_index + 1:] + " "
                     i += 1
                     continue
         get_extracted.append(args[i])
@@ -763,7 +766,7 @@ def extract_args(args, cmd, kctl_opts):
                     if kctl_opts[args[i]] == "false":
                         cmd["oo"] += " " + args[i]
                     else:
-                        cmd["oo"] += " " + args[i] + " " + args[i + 1]
+                        cmd["oo"] += " " + args[i] + " " + args[i + 1] + " "
             if kctl_opts[args[i]] == "false":
                 i += 1
             else:
@@ -797,9 +800,22 @@ def extract_args(args, cmd, kctl_opts):
         extracted.append(args[i])
         extracted_args_position.append(i)
         i += 1
-
     return extracted, extracted_args_position, cmd
 
+def generate_file_from_pin(p_in, file):
+    for item in ["kc","ctx","ns","kind","name"]:
+        if p_in[item] != P_UNKNOWN:
+            file = file.replace("{{"+f"{item}" + "}}", p_in[item])
+            file = file.replace("{{?:" + f"{item}" + "}}", p_in[item])
+        else:
+            file = file.replace("{{?:" + f"{item}" + "}}", "")
+        match = re.match(r"(.*)({{" + item + r"\?([A-Za-z0-9-]*):([A-Za-z0-9-]*)}})(.*)",file)
+        if match and match.groups():
+            if p_in[item] != P_UNKNOWN:
+                file = match.group(1) + match.group(3) + match.group(5)
+            else:
+                file = match.group(1) + match.group(4) + match.group(5)
+    return file
 
 def generate_to_exec(p_in, to_check):
     """generates kubectl line based on available data"""
@@ -1254,16 +1270,13 @@ def command_others_pipe_in(command, args, extracted_args_position, get_flags):
                         ]
                 if "KIND" in content:  # override value from pipe
                     p_in["kind"] = content["KIND"]
-                if (
-                        "NAME" in content
+                if ( "NAME" in content
+                    and p_in["kind"] == "StorageClass"
+                    and " (default)" in content["NAME"]
                 ):  # fixing kubectl non standard output for storageClass
-                    if (
-                            p_in["kind"] == "StorageClass"
-                            and " (default)" in content["NAME"]
-                    ):
-                        p_in["name"] = content["NAME"][0:-10]
-                    else:
-                        p_in["name"] = content["NAME"]
+                    p_in["name"] = content["NAME"][0:-10]
+                else:
+                    p_in["name"] = content["NAME"]
                 if "NAMESPACE" in content:
                     p_in["ns"] = content["NAMESPACE"]
             elif (
@@ -1380,6 +1393,8 @@ def command_others_pipe_in(command, args, extracted_args_position, get_flags):
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
                 pass_output_format(
                     args
                 )  # TO CONSIDER should w tack prev_p_in['format']
@@ -1473,6 +1488,8 @@ def command_others(command, args, cmd, extracted_args_position, get_flags, plugi
                 l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
             if get_flags:
                 l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
             pass_output_format(args)
             exec_args = ["kubectl"] + args[1:]
         else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
@@ -1597,6 +1614,8 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
                 if cmd["ns"] != P_UNKNOWN:
                     l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
                 if cmd["kind"] != P_UNKNOWN:
@@ -1656,15 +1675,14 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
                             content["NODE"] = line_split[1]
                         content["NAME"] = line_split[1]
                         content["KIND"] = line_split[0]
-                if "NAME" in content:
-                    # fixing kubectl non standard output for storageClass
-                    if (
-                            p_in["kind"] == "StorageClass"
-                            and " (default)" in content["NAME"]
-                    ):
-                        p_in["name"] = content["NAME"][0:-10]
-                    else:
-                        p_in["name"] = content["NAME"]
+                if ( "NAME" in content
+                    and p_in["kind"] == "StorageClass"
+                    and " (default)" in content["NAME"]
+                ):
+                # fixing kubectl non standard output for storageClass
+                    p_in["name"] = content["NAME"][0:-10]
+                else:
+                    p_in["name"] = content["NAME"]
                 if "NAMESPACE" in content:
                     p_in["ns"] = content["NAMESPACE"]
                 elif p_in["ns"] and p_in["ns"] != P_UNKNOWN:
@@ -1695,34 +1713,46 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
             to_exec = to_exec.replace("{{kind}}", p_in["kind"])
             if detect_output() == "pipe":  # command get, in get
                 l_print_t(PIPE_CMD_IN, f"{command}")
-                if (
-                        p_in["ns"] != P_UNKNOWN
-                        and prev_p_in["ns"] != p_in["ns"]
-                ):
+                #if (
+                #        p_in["ns"] != P_UNKNOWN
+                #        and prev_p_in["ns"] != p_in["ns"]
+                #):
+                if ( p_in["ns"] != P_UNKNOWN and
+                    cmd["ns"] == P_UNKNOWN ):
                     l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
-                    prev_p_in["ns"] = p_in["ns"]
-                if (
-                        p_in["ctx"] != P_UNKNOWN
-                        and prev_p_in["ctx"] != p_in["ctx"]
-                ):
+                #    prev_p_in["ns"] = p_in["ns"]
+                #if (
+                #        p_in["ctx"] != P_UNKNOWN
+                #        and prev_p_in["ctx"] != p_in["ctx"]
+                #):
+                if ( p_in["ctx"] != P_UNKNOWN and
+                     cmd["ctx"] == P_UNKNOWN ):
                     l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
-                    prev_p_in["ctx"] = p_in["ctx"]
+                #    prev_p_in["ctx"] = p_in["ctx"]
                 if (
                         p_in["kind"] != P_UNKNOWN
-                        and prev_p_in["kind"] != p_in["kind"]
+                #        and prev_p_in["kind"] != p_in["kind"]
+                        and cmd["kind"] in ["{{kind}}",P_UNKNOWN]
                 ):
                     l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
-                    prev_p_in["kind"] = p_in["kind"]
+                #    prev_p_in["kind"] = p_in["kind"]
                 if p_in["kc"] != P_UNKNOWN:
                     l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
                 if p_in["oo"] != P_UNKNOWN:
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
                 if cmd["ns"] != P_UNKNOWN:
                     l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
-                if cmd["kind"] != P_UNKNOWN:
+                if cmd["kind"] != P_UNKNOWN and cmd["kind"] != "{{kind}}":
                     l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
+                #    prev_p_in["kind"] = cmd['kind']
+                if p_in["name"] != P_UNKNOWN and cmd["name"] == "{{name}}":
+                    l_print_t(PIPE_NAME_IN, f"{p_in['name']}")
+                elif content['NAME'] != P_UNKNOWN and cmd["name"] == "{{name}}":
+                    l_print_t(PIPE_NAME_IN, f"{content['NAME']}")
                 exec_words = to_exec.split()
                 no_header_present = "--no-headers" in exec_words
                 pass_output_format(args)
@@ -1819,6 +1849,8 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
                     l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
                 if get_flags:
                     l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if cmd["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
                 pass_output_format(
                     args
                 )  # TO CONSIDER should w tack prev_p_in['format']
@@ -1910,6 +1942,8 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
                 l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
             if get_flags:
                 l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
             exec_words = to_exec.split()
             no_header_present = "--no-headers" in exec_words
             pass_output_format(args)
@@ -1944,6 +1978,8 @@ def command_kctl_generators(command, args, cmd, extracted_args_position, get_fla
                 l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
             if get_flags:
                 l_print_t(PIPE_OPT_IN, f"{get_flags}")
+            if cmd["oo"] != P_UNKNOWN:
+                l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
             pass_output_format(args)
             to_check = " ".join(["kubectl"] + args[1:])
             if command == "sh":
@@ -2027,6 +2063,60 @@ def command_unknown(command, args):
         )
         exec_args = ["kubectl"] + args[1:]
         system_exec(" ".join(exec_args))
+
+
+def command_to_file(args, extracted_args_position):
+    """ writing to a file"""
+    multiple_in = False
+    line_num = -1
+    handle = False
+    file_name = ""
+    if len(args) != 3:
+        l_print_e(P_ERROR,"not enough argumtens, format is _ @ <path>")
+        return
+    p_in = set_pipe_input()
+    if len(args) > extracted_args_position[1] + 1:  # kind
+        p_in["obj"] = args[extracted_args_position[1] + 1]
+    for line in standard_input:  # sys.stdin:
+        if multiple_in and line == "\n":  # case of get svc,pod there is a blank line break
+            line_num = 0  # reload headers
+            continue
+        if line.startswith(f"#{PLUGIN_NAME}:"):
+            p_in = detect_in_plugin_content(p_in, line)
+            line_num = 0
+            file_name = ""
+            handle = False
+            continue
+        line_num += 1
+        if line_num > 0 and p_in["format"] in ['json','yaml']:
+            if not file_name:
+                file_name = generate_file_from_pin(p_in, args[2])
+            file_name_dir = "/".join(file_name.split("/")[0:-1])
+            if file_name_dir and not os.path.exists(file_name_dir):
+                try:
+                    os.makedirs(file_name_dir)
+                except Exception as e:
+                    l_print_e(P_WARNING, f"could not create dir {file_name_dir} for file {file_name}")
+                    continue
+            if file_name:
+                if handle:
+                    if file_name != handle.name:
+                        handle.close()
+                        try:
+                            handle = open(file_name, 'w')
+                            handle.truncate(0)
+                        except Exception as e:
+                            l_print_e(P_WARNING, f"could not open file {file_name}")
+                            continue
+                    handle.write(line)
+                else:
+                    try:
+                        handle = open(file_name, 'w')
+                        handle.truncate(0)
+                    except Exception as e:
+                        l_print_e(P_WARNING, f"could not open file {file_name}")
+                        continue
+                    handle.write(line)
 
 
 def q_evaluate(op1, op2, operator):
@@ -2542,6 +2632,7 @@ def main_loop(args):
         "+",
         "-",
         "?",
+        "@",
         "clean",
         "env-vars",
         "yaml-inject",
@@ -2573,6 +2664,8 @@ def main_loop(args):
         command_filter(args)
     elif command == "?":
         command_question(args)
+    elif command == "@":
+        command_to_file(args,extracted_args_position)
     elif command == "-help":  # help
         instruction_help(internal, kctl_generators)
         stream_helper()
