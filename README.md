@@ -45,12 +45,7 @@ Usual pattern of such executions is to get a list of items and then to operate o
 One could use xargs but it won't make the command line simpler.
 
 
-With this tool I can:
-``` bash
-_ -n some get pod -l app=some | \
- _ delete pod {{name}}
-```
-or if you use it as kubectl plugin
+With this tool I can append line or _ after kubectl that selected resources, and add pipe:
 ``` bash
 kubectl line -n some get pod -l app=some | \
  kubectl line delete pod {{name}}
@@ -59,6 +54,11 @@ or if you've linked kubectl-line to kubectl-_
 ```bash
 kubectl _ -n some get pod -l app=some | \
 kubectl _ line delete pod {{name}}
+```
+or if you've linked kubectl-line to _
+```bash
+_ -n some get pod -l app=some | \
+_ delete pod {{name}}
 ```
 
 I have a script that dumps all kubernetes objects from cluster, but 
@@ -94,7 +94,7 @@ _ kc-inject ~/.kube/west ~/.kube/east | \
 _ -n kube-system get pod etcd-minikube -o json \> /tmp/{{ctx}}_{{ns}}_etcd.json
 ```
 
-With this tool that supports piped executions you can, dump all cluster/context objects from selected kubeconfig files:
+With piped executions you can, dump all cluster/context objects from selected kubeconfig files:
 ``` bash
 _ kc-inject ~/.kube/europe ~/.kube/america | \
 _ config get-contexts | \
@@ -120,7 +120,7 @@ _ cgc | + NAME '^.*[euro|america].*$' |\
 _ get ns
 ```
 
-With few tool specific commands you can additionally inject (extend) format
+This tool specific commands you can additionally inject (extend) format
 of yaml/json manifest files with specific kubernetes-config file and context attributes.
 ``` bash
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
@@ -137,7 +137,8 @@ Now each item in output file will have extended json format with headers that lo
 ...
 ```
 attribute "context" is showing origin context of item, attribute "kubeconfig" shows
-file from which context is loaded.
+file from which context is loaded. Now you sould be able to differentiate manifests by
+context and kubeconfig beig used to fetch them.
 
 If you do not like to extend manifest, you can put objects in correctly named files
 you can always use available {{ }} tags for example:
@@ -189,7 +190,7 @@ _ --context minikube -n test-run get pods,svc | _ get {{kind}} {{name}}
 and {{kind}} will be matched.
 
 
-If you want to explicitly use some field you
+If you want to explicitly use some named column field (kubectl output of previous pipe section) you
 can use some of {{ }} tags, explained in the section below.
 
 
@@ -253,12 +254,13 @@ Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND an
 # Flow arrangements
 
 
-## Starters:
+## Starters (ie generators):
 Starters are those commands that you can start pipe sequence with:
 They either add some functionality (kc-inject) or are able to display
 some information that can be used in following pipe executions.
+Startes generate some content one can work with in pipe sequence.
 
-  _ kc-inject <file1> <file2>
+  _ kc-inject <file1> <file2> ...
     injects multiple kubectl config files in pipe stream
     ( kubectl is limited to only one config file )
 
@@ -278,11 +280,15 @@ some information that can be used in following pipe executions.
 
 
 ## Filters:
+
 Group of commands dedicated to filtering between pipes:
 
+
 Filter in or filter out specific column name on given regexp:
+
   _ + <column_name> <regex>
     include lines that match
+
   _ - <column_name> <regex>
     excludes lines that match
 
@@ -290,11 +296,13 @@ Filter in or filter out specific column name on given regexp:
 Filters out specific column with expression (gt,lt,le,ge,eq,ne,re):
   _ ? <column_name> <arg1> <operator> <arg2> 
 
+
 Makes specific column values unique (like api-resources might return duplicate resource kind):
   _ uniq <column_name>
 
 
 ## terminators:
+
 Group of commands that you will execute as last in pipe sequence.
   _ get
   get can also be terminator, as it can be starter
@@ -311,13 +319,16 @@ Group of commands that you will execute as last in pipe sequence.
    used after kubectl -o json or -o yaml
 
 If you follow internal communication rules of this tool, you might make
-_ sh as not terminal command in sequence of piped executions of this tool,
-but it is not intended and not that easy. This tool is extendable.
+_ sh execution not as a terminal command in sequence of piped executions of this tool,
+but it is not intended and not that easy. Yet this tool is extendable.
 
 
 Flow terminator (last command in sequence of piped executions of this tool) can be 
 any other kubectl command (exec, logs, labels, ...) ie command that would break
 kubectl pipeline execution stream, or will not return named column results.
+
+If you follow this tool communication rules, you could extend and add some
+new pipe sequence compatible command.
 
 
 ## helpers:
@@ -358,7 +369,7 @@ Following execution pipe streams are allowed:
 
 ## getting object that do not have labels
 ``` bash
- _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>' | grep -v ^#line
+ _ kc-inject ~/.kube/config|_ cgc|_ api-r|_ get {{kind}} -A --show-labels | _ + LABELS '<none>'
 ```
 
 ## dumping all objects for all clusters ie contexts from ~/.kube/west and ~/.kube/east file
@@ -366,7 +377,6 @@ Following execution pipe streams are allowed:
 time /bin/bash -c "
  _ kc-inject ~/.kube/west ~/.kube/east |_ cgc|_ api-r|_ get ns|_ get {{kind}}|_ get {{kind}} {{name}} "
 ```
-
 
 ## dumping all objects for all contexts in default ~/.kube/config file
 
@@ -386,9 +396,19 @@ _ get pod -A | _ ? READY ?1 ne ?2
 ```
 on field READY X/Y, compares (not equal) first number (X) to second (Y) number of READY X/Y
 
-## getting what value keys (?x) are available for filtering READY column 
+## getting what rendered value keys (?x) are available for filtering READY column 
 ``` bash
 _ get pod -A | _ ? READY _? 
+```
+
+## getting all pods that are restarted more than 3 times
+``` bash
+_ -n test get pod | _ ? RESTARTS ?1 gt 3
+```
+
+## getting all pods that are were restarted between 10min and 20min ago
+``` bash
+_ get pod -A | _ ? RESTARTS ?seconds ge 600 | _ ? RESTARTS ?seconds le 1200
 ```
 
 ## filtering out kubectl api-resources APIVERSION filed
@@ -398,6 +418,7 @@ _ api-r | _ + APIVERSION k8s.io
 
 # Requirements
 
-This tool uses all modules that were already included in python3.
-The only requirement is to have python3. Also you should have kubectl too.
+You should have kubectl.
+This tool uses all modules that were already included in python3
+The only requirement is to have python3.
 
