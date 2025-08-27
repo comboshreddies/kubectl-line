@@ -315,21 +315,28 @@ Makes specific column values unique (like api-resources might return duplicate r
 ## terminators:
 
 Group of commands that you will execute as last in pipe sequence.
+
   _ get
+
   get can also be terminator, as it can be starter
 
   _ sh
+
    execute shell with available {{ }} tags and environment variables
 
   _ clean
+
    cleans specific plugin # tags from input/output
 
   _ yaml-inject
+
   _ json-inject
+
    inject context and kubeconfig file used to get that object
    used after kubectl -o json or -o yaml
 
   _ @
+
   will work only if previous output format is yaml or json, and it will
   store file in specific templated directory
 
