@@ -2167,6 +2167,363 @@ def q_evaluate(op1, op2, operator):
     return q_check
 
 
+def detect_value_number(to_check):
+    """detect number type"""
+    value = {}
+    match = re.match(r"^(\d+)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = int(match.group(1))
+        value['type'] = "NUMBER"
+        return value
+    return False
+
+
+def detect_value_word(to_check):
+    """detect simple word type"""
+    value = {}
+    match = re.match(r"^([a-zA-Z]+)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value['type'] = "WORD"
+    return value
+
+
+def detect_value_float(to_check):
+    """detect float type"""
+    value = {}
+    match = re.match(r"^(\d+)(\.)*(\d*)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = float(match.group(0))
+        value['type'] = "FLOAT"
+    return value
+
+
+def detect_value_resource(to_check):
+    """detect resource value"""
+    value = {}
+    match = re.match(r"^([a-z][a-z0-9-.]*)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value['type'] = "RESOURCE"
+    return value
+
+
+def detect_value_role(to_check, column):
+    """detect role like value"""
+    # role,and more complex types
+    value = {}
+    reg = r"([a-z][a-z0-9-.]+)[:|/]*([a-z0-9-.]+)[:|/]*([a-z0-9-.]*)"
+    match = re.match(reg, to_check)
+    if (match and match.group(0)
+            and "CPU" not in column
+            and "MEMORY" not in column):
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value[2] = match.group(2)
+        value[3] = match.group(3)
+        value['str'] = match.group(0)
+        value['type'] = "URI"
+    return value
+
+
+def detect_value_age(to_check, column):
+    """detect age value"""
+    value = {}
+    match = re.match(r"(\d+y)*(\d+d)*(\d+h)*(\d+m)*(\d+s)*", to_check)
+    if match and match.group(0) and "CPU" not in column:
+        years = 0
+        days = 0
+        hours = 0
+        minutes = 0
+        seconds = 0
+        if match.group(1):
+            years = int(match.group(1)[:-1])
+            value['y'] = years
+        if match.group(2):
+            days = int(match.group(2)[:-1])
+            value['d'] = days
+        if match.group(3):
+            hours = int(match.group(3)[:-1])
+            value['h'] = hours
+        if match.group(4):
+            minutes = int(match.group(4)[:-1])
+            value['m'] = minutes
+        if match.group(5):
+            seconds = int(match.group(5)[:-1])
+            value['s'] = seconds
+        value['seconds'] = 30758400 * years + days * 86400 + hours * 3600 + minutes * 60 + seconds
+        value['type'] = 'AGE'
+    return value
+
+
+def detect_value_ready(to_check):
+    """detect ready value"""
+    # ready like format
+    value = {}
+    match = re.match(r"(\d+)/(\d+)", to_check)
+    if match:
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value[2] = match.group(2)
+        value['type'] = 'READY'
+    return value
+
+
+def detect_value_date(to_check):
+    """detect date value"""
+    value = {}
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z", to_check)
+    if match:
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value['y'] = int(match.group(1))
+        value[2] = match.group(2)
+        value['m'] = int(match.group(2))
+        value[3] = match.group(3)
+        value['d'] = int(match.group(3))
+        value[4] = match.group(4)
+        value['H'] = int(match.group(4))
+        value[5] = match.group(5)
+        value['M'] = int(match.group(5))
+        value[6] = match.group(6)
+        value['S'] = int(match.group(6))
+        value['type'] = 'DATE'
+    return value
+
+
+def detect_value_nmw(to_check, column):
+    """detect node metrics value"""
+    # NodeMetrics WINDOW
+    value = {}
+    match = re.match(r"(\d+d)*(\d+h)*(\d+m)*((\d*.)*\d+s)*", to_check)
+    if match and match.group(0) and "CPU" not in column:
+        days = int(match.group(1)[:-1])
+        hours = int(match.group(2)[:-1])
+        minutes = int(match.group(3)[:-1])
+        seconds = float(match.group(4)[:-1])
+        value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+        value['type'] = 'NODEMETRICS'
+    return value
+
+
+def detect_value_restarts(to_check):
+    """detect restarts value"""
+    # restarts like format '2 (5d ago)'
+    value = {}
+    match = re.match(r"^(\d+)( \(((\d+)y)*((\d+)d)*((\d+)h)*((\d+)m)*((\d+)s)* ago\))*$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)  # restarts
+        value['str'] = match.group(0)  # full string
+        value['int'] = int(match.group(1))
+        value[1] = int(match.group(1))
+        seconds = 0
+        if match.group(11):
+            seconds = int(match.group(11)[:-1])
+            value['s'] = int(match.group(11)[:-1])
+        if match.group(9):
+            seconds += 60 * int(match.group(9)[:-1])
+            value['m'] = int(match.group(9)[:-1])
+        if match.group(7):
+            seconds += 3600 * int(match.group(7)[:-1])
+            value['h'] = int(match.group(7)[:-1])
+        if match.group(5):
+            seconds += 86400 * int(match.group(5)[:-1])
+            value['d'] = int(match.group(5)[:-1])
+        if match.group(3):
+            seconds += 31536000 * int(match.group(3)[:-1])
+            value['y'] = int(match.group(3)[:-1])
+        value['seconds'] = seconds
+        value['type'] = 'RESTARTS'
+    return value
+
+
+def detect_value_ip(to_check):
+    """detect ip address"""
+    # ip address
+    value = {}
+    reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+    reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    match = re.match(
+        reg,
+        to_check)
+    if match and match.group(0):
+        match = re.match(r"^(\d+).(\d+).(\d+).(\d+)$", to_check)
+        if match:
+            value[0] = match.group(0)
+            value[1] = match.group(1)
+            value[2] = match.group(2)
+            value[3] = match.group(3)
+            value[4] = match.group(4)
+            value['int'] = (((int(value['1']) * 256 + int(value['2'])) * 256
+                             + int(value['3']) * 256 + int(value['4'])))
+            value['type'] = 'IP'
+    return value
+
+
+def detect_value_tcpip(to_check):
+    """detect tcpipm, ip : port"""
+    # ip address : port
+    value = {}
+    reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+    reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):"
+    reg += "(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?)$"
+    match = re.match(reg, to_check)
+    if match and match.group(0):
+        match = re.match(r"^(\d+).(\d+).(\d+).(\d+):(\d+)$", to_check)
+        if match and match.group(0):
+            value[0] = match.group(0)
+            value[1] = match.group(1)
+            value[2] = match.group(2)
+            value[3] = match.group(3)
+            value[4] = match.group(4)
+            value[5] = match.group(5)
+            value['type'] = "TCPIP"
+    return value
+
+
+def detect_value_port(to_check):
+    """detect port value"""
+    # PORTS 443/TCP
+    value = {}
+    reg = r"(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?):(\w+)$"
+    match = re.match(reg, to_check)
+    if match and match.group(0):
+        match = re.match(r"(\d+)/(\w+)", to_check)
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value[2] = match.group(2)
+        value['type'] = "PORTS"
+    return value
+
+
+def detect_value_version(to_check):
+    """detect version value"""
+    #  v1.32.0  r"^v(\d+).(\d+).(\d+)
+    value = {}
+    match = re.match(r"^v(\d+).(\d+).(\d+)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value[2] = match.group(2)
+        value[3] = match.group(3)
+        value['type'] = "VERSION"
+    return value
+
+
+def detect_value_memory(to_check):
+    """detect memory value"""
+    value = {}
+    match = re.match(r"^(\d+)([K|M|G|T|P|E]i)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value[2] = match.group(2)
+        part1 = int(match.group(1))
+        part2 = match.group(2)
+        n_bytes = 0
+        if part2 == 'Ki':
+            n_bytes = 1024 * part1
+        if part2 == 'Mi':
+            n_bytes = 1024 * 1024 * part1
+        if part2 == 'Gi':
+            n_bytes = 1024 * 1024 * 1024 * part1
+        if part2 == 'Ti':
+            n_bytes = 1024 * 1024 * 1024 * 1024 * part1
+        if part2 == 'Pi':
+            n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * part1
+        if part2 == 'Ei':
+            n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * 1024 * part1
+        value['int'] = n_bytes
+        value['type'] = "MEMORY"
+    return value
+
+
+def detect_value_percent(to_check):
+    """detect percent value"""
+    value = {}
+    match = re.match(r"^(\d+)%$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value['int'] = int(match.group(1))
+        value['type'] = 'PERCENT'
+    return value
+
+
+def detect_value_cpu(to_check,column):
+    """detect cpu value"""
+    value = {}
+    match = re.match(r"^(\d+)(m)$", to_check)
+    if "CPU" in column and match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = match.group(1)
+        value['int'] = int(match.group(1))
+        if match.group(2):
+            value[2] = match.group(2)
+        else:
+            value['int'] = value['int'] * 1000
+        value['type'] = "CPU"
+    return value
+
+
+def detect_value_exp_float(to_check):
+    """detect float in exponential form"""
+    value = {}
+    match = re.match(r"^(\d+)e([+-]*\d+)$", to_check)
+    if match and match.group(0):
+        value[0] = match.group(0)
+        value[1] = int(match.group(1))
+        value[2] = int(match.group(2))
+        value['float'] = value[1] * 10 ** value[2]
+        value['type'] = "EXPFLOAT"
+    return value
+
+
+def detect_value(to_check,column):
+    """detect various value types"""
+    value = detect_value_number(to_check)
+    if not value:
+        value = detect_value_word(to_check)
+    if not value:
+        value = detect_value_float(to_check)
+    if not value:
+        value = detect_value_resource(to_check)
+    if not value:
+        value = detect_value_role(to_check, column)
+    if not value:
+        value = detect_value_age(to_check, column)
+    if not value:
+        value = detect_value_ready(to_check)
+    if not value:
+        value = detect_value_date(to_check)
+    if not value:
+        value = detect_value_nmw(to_check, column)
+    if not value:
+        value = detect_value_restarts(to_check)
+    if not value:
+        value = detect_value_ip(to_check)
+    if not value:
+        value = detect_value_tcpip(to_check)
+    if not value:
+        value = detect_value_port(to_check)
+    if not value:
+        value = detect_value_version(to_check)
+    if not value:
+        value = detect_value_memory(to_check)
+    if not value:
+        value = detect_value_percent(to_check)
+    if not value:
+        value = detect_value_cpu(to_check, column)
+    if not value:
+        value = detect_value_exp_float(to_check)
+    if not value:
+        l_print_e(P_ERROR, f"unknown format of a column {column_to_inspect}, assume string")
+        value[0] = to_check
+        value['type'] = "STRING"
+    return value
+
 def command_question(args):
     """handling test on column like AGE #1 > 5d"""
     position = []
@@ -2210,10 +2567,8 @@ def command_question(args):
                 continue
             l_print_e(P_DEBUG, "unrecognized headers")
             break
-        value = {}
         content = read_row_from_line(position, columns, line)
         line_num += 1
-        skip = False
         parse_debug = False
         if (len(args) == 4 and args[3] == "_?") or (len(args) == 3 and args[2] == "_?"):
             l_print_e("debug?", f"line content: {content}")
@@ -2225,249 +2580,7 @@ def command_question(args):
                     break
         if column_to_inspect in content:
             to_check = content[column_to_inspect]
-            q_type = P_UNKNOWN
-            # age like format
-            match = re.match(r"^(\d+)$", to_check)
-            if match and match.group(0):
-                value[0] = match.group(0)
-                value[1] = int(match.group(1))
-                q_type = "NUMBER"
-                skip = True
-            if not skip:
-                match = re.match(r"^([a-zA-Z]+)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    q_type = "WORD"
-                    skip = True
-            if not skip:
-                match = re.match(r"^(\d+)(\.)*(\d*)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = float(match.group(0))
-                    q_type = "FLOAT"
-                    skip = True
-            if not skip:
-                match = re.match(r"^([a-z][a-z0-9-.]*)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    q_type = "RESOURCE"
-                    skip = True
-            if not skip:
-                # role,and more complex types
-                reg = r"([a-z][a-z0-9-.]+)[:|/]*([a-z0-9-.]+)[:|/]*([a-z0-9-.]*)"
-                match = re.match(reg, to_check)
-                if (match and match.group(0)
-                        and "CPU" not in column_to_inspect
-                        and "MEMORY" not in column_to_inspect):
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value[2] = match.group(2)
-                    value[3] = match.group(3)
-                    value['str'] = match.group(0)
-                    q_type = "URI"
-                    skip = True
-            if not skip:
-                match = re.match(r"(\d+d)*(\d+h)*(\d+m)*(\d+s)*", to_check)
-                if match and match.group(0) and "CPU" not in column_to_inspect:
-                    days = 0
-                    hours = 0
-                    minutes = 0
-                    seconds = 0
-                    if match.group(1):
-                        days = int(match.group(1)[:-1])
-                        value['d'] = days
-                    if match.group(2):
-                        hours = int(match.group(2)[:-1])
-                        value['h'] = hours
-                    if match.group(3):
-                        minutes = int(match.group(3)[:-1])
-                        value['m'] = minutes
-                    if match.group(4):
-                        seconds = int(match.group(4)[:-1])
-                        value['s'] = seconds
-                    value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
-                    q_type = 'AGE'
-                    skip = True
-            if not skip:
-                # ready like format
-                match = re.match(r"(\d+)/(\d+)", to_check)
-                if match:
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value[2] = match.group(2)
-                    q_type = 'READY'
-                    skip = True
-            if not skip:
-                match = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z", to_check)
-                if match:
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value['y'] = int(match.group(1))
-                    value[2] = match.group(2)
-                    value['m'] = int(match.group(2))
-                    value[3] = match.group(3)
-                    value['d'] = int(match.group(3))
-                    value[4] = match.group(4)
-                    value['H'] = int(match.group(4))
-                    value[5] = match.group(5)
-                    value['M'] = int(match.group(5))
-                    value[6] = match.group(6)
-                    value['S'] = int(match.group(6))
-                    q_type = 'DATE'
-                    skip = True
-            if not skip:
-                # NodeMetrics WINDOW
-                match = re.match(r"(\d+d)*(\d+h)*(\d+m)*((\d*.)*\d+s)*", to_check)
-                if match and match.group(0) and "CPU" not in column_to_inspect:
-                    days = int(match.group(1)[:-1])
-                    hours = int(match.group(2)[:-1])
-                    minutes = int(match.group(3)[:-1])
-                    seconds = float(match.group(4)[:-1])
-                    value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
-                    q_type = 'NODEMETRICS'
-                    skip = True
-            if not skip:
-                # restarts like format '2 (5d ago)'
-                match = re.match(r"^(\d+)( \(((\d+)y)*((\d+)d)*((\d+)h)*((\d+)m)*((\d+)s)* ago\))*$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)  # restarts
-                    value['str'] = match.group(0)  # full string
-                    value['int'] = int(match.group(1))
-                    value[1] = int(match.group(1))
-                    val3 = match.group(3)
-                    seconds = 0
-                    if match.group(11):
-                        seconds = int(match.group(11)[:-1])
-                        value['s'] = int(match.group(11)[:-1])
-                    if match.group(9):
-                        seconds += 60 * int(match.group(9)[:-1])
-                        value['m'] = int(match.group(9)[:-1])
-                    if match.group(7):
-                        seconds += 3600 * int(match.group(7)[:-1])
-                        value['h'] = int(match.group(7)[:-1])
-                    if match.group(5):
-                        print(match.group(5))
-                        seconds += 86400 * int(match.group(5)[:-1])
-                        value['d'] = int(match.group(5)[:-1])
-                    if match.group(3):
-                        seconds += 31536000 * int(match.group(3)[:-1])
-                        value['y'] = int(match.group(3)[:-1])
-                    value['seconds'] = seconds
-                    q_type = 'RESTARTS'
-                    skip = True
-            if not skip:
-                # ip address
-                reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
-                reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-                match = re.match(
-                    reg,
-                    to_check)
-                if match and match.group(0):
-                    match = re.match(r"^(\d+).(\d+).(\d+).(\d+)$", to_check)
-                    if match:
-                        value[0] = match.group(0)
-                        value[1] = match.group(1)
-                        value[2] = match.group(2)
-                        value[3] = match.group(3)
-                        value[4] = match.group(4)
-                        value['int'] = (((int(value['1']) * 256 + int(value['2'])) * 256
-                                         + int(value['3']) * 256 + int(value['4'])))
-                        q_type = 'IP'
-                        skip = True
-            if not skip:
-                # ip address : port
-                reg = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
-                reg += "(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):"
-                reg += "(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?)$"
-                match = re.match(reg, to_check)
-                if match and match.group(0):
-                    match = re.match(r"^(\d+).(\d+).(\d+).(\d+):(\d+)$", to_check)
-                    if match and match.group(0):
-                        value[0] = match.group(0)
-                        value[1] = match.group(1)
-                        value[2] = match.group(2)
-                        value[3] = match.group(3)
-                        value[4] = match.group(4)
-                        value[5] = match.group(5)
-                        q_type = "TCPIP"
-                        skip = True
-            if not skip:
-                # PORTS 443/TCP
-                reg = r"(?:6[0-5][0-5][0-3][0-5]|[0-5]?[0-9]?[0-9]?[0-9][0-9]?):(\w+)$"
-                match = re.match(reg, to_check)
-                if match and match.group(0):
-                    match = re.match(r"(\d+)/(\w+)", to_check)
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value[2] = match.group(2)
-                    q_type = "PORTS"
-                    skip = True
-            if not skip:
-                #  v1.32.0  r"^v(\d+).(\d+).(\d+)
-                match = re.match(r"^v(\d+).(\d+).(\d+)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value[2] = match.group(2)
-                    value[3] = match.group(3)
-                    q_type = "VERSION"
-                    skip = True
-            if not skip:
-                match = re.match(r"^(\d+)([K|M|G|T|P|E]i)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value[2] = match.group(2)
-                    part1 = int(match.group(1))
-                    part2 = match.group(2)
-                    n_bytes = 0
-                    if part2 == 'Ki':
-                        n_bytes = 1024 * part1
-                    if part2 == 'Mi':
-                        n_bytes = 1024 * 1024 * part1
-                    if part2 == 'Gi':
-                        n_bytes = 1024 * 1024 * 1024 * part1
-                    if part2 == 'Ti':
-                        n_bytes = 1024 * 1024 * 1024 * 1024 * part1
-                    if part2 == 'Pi':
-                        n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * part1
-                    if part2 == 'Ei':
-                        n_bytes = 1024 * 1024 * 1024 * 1024 * 1024 * 1024 * part1
-                    value['int'] = n_bytes
-                    q_type = "MEMORY"
-                    skip = True
-            if not skip:
-                match = re.match(r"^(\d+)%$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value['int'] = int(match.group(1))
-                    q_type = 'PERCENT'
-                    skip = True
-            if not skip:
-                match = re.match(r"^(\d+)(m)$", to_check)
-                if "CPU" in column_to_inspect and match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = match.group(1)
-                    value['int'] = int(match.group(1))
-                    if match.group(2):
-                        value[2] = match.group(2)
-                    else:
-                        value['int'] = value['int'] * 1000
-                    q_type = "CPU"
-            if not skip:
-                # float
-                match = re.match(r"^(\d+)e([+-]*\d+)$", to_check)
-                if match and match.group(0):
-                    value[0] = match.group(0)
-                    value[1] = int(match.group(1))
-                    value[2] = int(match.group(2))
-                    value['float'] = value[1] * 10 ** value[2]
-                    q_type = "FLOAT"
-            if not skip:
-                l_print_e(P_ERROR, f"unknown format of a column {column_to_inspect}, assume string")
-                value[0] = to_check
-                q_type = "STRING"
+            value = detect_value(to_check,column_to_inspect)
             if parse_debug:
                 l_print_e("debug?", "------------")
                 l_print_e("debug? column to observe ", column_to_inspect)
@@ -2475,9 +2588,8 @@ def command_question(args):
                 l_print_e("debug?", f"matched fields:")
                 for i in value:
                     l_print_e("debug?", f" ?{i} -> {value[i]}")
-                l_print_e("debug?", f"type: {q_type}")
                 continue
-            if q_operator not in ['eq', 'ne', 'le', 'ge', 'gt', 'lt', '?', 're']:
+            if q_operator not in ['eq', 'ne', 'le', 'ge', 'gt', 'lt', '?', 're','_?']:
                 l_print_e(P_ERROR, f"unknown operator {q_operator} or not enough args")
             else:
                 if q_operand1[0] != '?' and q_operand2[0] != '?':
@@ -2486,7 +2598,10 @@ def command_question(args):
                 if q_operand1[0] == '?' and q_operand2[0] == '?':
                     # internal comparison
                     # XTODO do try no guarantee that operand can be converted to int
-                    qo1_idx = q_operand1[1:]
+                    if q_operator == "_?":
+                        l_print_e(P_ERROR, f"operator _? should not be used to describe internal comparison")
+                        l_print_e(P_ERROR, f"use _ ? NAME _? for internal fields debug")
+                        break
                     try:
                         qo1_idx = int(q_operand1[1:])
                     except ValueError:
@@ -2512,29 +2627,44 @@ def command_question(args):
                     else:
                         internal_operand = q_operand2[1:]
                         external_operand = q_operand1
-                    if internal_operand in value:
-                        qo_int = value[internal_operand]
-                    elif re.match(r"^(\d+)$", internal_operand) and int(internal_operand) in value:
-                        qo_int = value[int(internal_operand)]
-                    else:
-                        l_print_e("error?", f"operand {internal_operand}"
-                                  f"not found in values {value}"
+                    ext_value = detect_value(external_operand,"")
+                    if q_operator == "_?":
+                        l_print_e("debug? operator","--------")
+                        l_print_e("debug? internal op", internal_operand)
+                        l_print_e("debug? internal value", value)
+                        l_print_e("debug? external op", external_operand)
+                        l_print_e("debug? external value", ext_value)
+                    if internal_operand in ext_value:
+                        if type(ext_value[internal_operand]) == type(value[internal_operand]):
+                            test_result = q_evaluate(value[internal_operand], ext_value[internal_operand], q_operator)
+                        else:
+                            l_print_e("internal_error?", f"operand {internal_operand} "
+                                            f"type is not same as {external_operand}"
                                   )
-                        continue
-                    test_result = False
-                    if isinstance(qo_int, int):
-                        # check if external is int
-                        match = re.match(r"^(\d+)$", external_operand)
-                        if match:
-                            test_result = q_evaluate(qo_int, int(external_operand), q_operator)
-                    elif isinstance(qo_int, float):
-                        # check if external is float
-                        match = re.match(r"^(\d+).(\d)*$", external_operand)
-                        if match:
-                            test_result = q_evaluate(qo_int, float(external_operand), q_operator)
                     else:
-                        # string
-                        test_result = q_evaluate(qo_int, external_operand, q_operator)
+                        if internal_operand in value:
+                            qo_int = value[internal_operand]
+                        elif re.match(r"^(\d+)$", internal_operand) and int(internal_operand) in value:
+                            qo_int = value[int(internal_operand)]
+                        else:
+                            l_print_e("error?", f"operand {internal_operand}"
+                                      f"not found in values {value}"
+                                      )
+                            continue
+                        test_result = False
+                        if isinstance(qo_int, int):
+                            # check if external is int
+                            match = re.match(r"^(\d+)$", external_operand)
+                            if match:
+                                test_result = q_evaluate(qo_int, int(external_operand), q_operator)
+                        elif isinstance(qo_int, float):
+                            # check if external is float
+                            match = re.match(r"^(\d+).(\d)*$", external_operand)
+                            if match:
+                                test_result = q_evaluate(qo_int, float(external_operand), q_operator)
+                        else:
+                            # string
+                            test_result = q_evaluate(qo_int, external_operand, q_operator)
                     if test_result:
                         if header_line:
                             print(header_line, end="")
