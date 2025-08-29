@@ -232,7 +232,7 @@ def instruction_help(instructions, kctl_generators):
         "+": "select lines containing argument word, + <column_name> <argument> ...",
         "-": "remove lines containing argument word, - <column_name> <argument> ...",
         "@": "redirects input to a output file being aware of input fields",
-        "?": "include lines that match expression like ? AGE < 10d ",
+        "?": "include lines that match expression like RESTARTS ?1 le 4 ",
         "api-r": "shortuct for api-resources",
         "cgc": "shortcut for config get-contexts kubectl command",
         "clean": "remove comment lines that are this plugin generates",
@@ -2074,6 +2074,7 @@ def command_to_file(args, extracted_args_position):
     line_num = -1
     handle = False
     file_name = ""
+    file_written_set = set()
     if len(args) != 3:
         l_print_e(P_ERROR,"not enough argumtens, format is _ @ <path>")
         return
@@ -2106,19 +2107,31 @@ def command_to_file(args, extracted_args_position):
                     if file_name != handle.name:
                         handle.close()
                         try:
-                            handle = open(file_name, 'w')
-                            handle.truncate(0)
+                            if file_name not in file_written_set:
+                                file_written_set.add(file_name)
+                                handle = open(file_name, 'w')
+                                handle.truncate(0)
+                            else:
+                                handle = open(file_name, 'a')
                         except Exception as e:
                             l_print_e(P_WARNING, f"could not open file {file_name}")
                             continue
+                    if p_in["format"] == "yaml" and line_num == 1:
+                        handle.write("---\n")
                     handle.write(line)
                 else:
                     try:
-                        handle = open(file_name, 'w')
-                        handle.truncate(0)
+                        if file_name not in file_written_set:
+                            file_written_set.add(file_name)
+                            handle = open(file_name, 'w')
+                            handle.truncate(0)
+                        else:
+                            handle = open(file_name, 'a')
                     except Exception as e:
                         l_print_e(P_WARNING, f"could not open file {file_name}")
                         continue
+                    if p_in["format"] == "yaml" and line_num == 1:
+                        handle.write("---\n")
                     handle.write(line)
 
 
