@@ -245,6 +245,7 @@ def instruction_help(instructions, kctl_generators):
         "if get/-o json is used",
         "kc-inject": "injects all contexts from all kubeconfig "
         "referenced files",
+        "kci" : "shortcut for kc-inject",
         "sh": "executes shell with environment variables set, "
         "along with name replacement",
         "top": "kubectl top command",
@@ -1082,6 +1083,8 @@ def command_cgc(command, args, cmd):
 
 def command_kc_inject(command, args, cmd, extracted_args_position):
     """inject more than one kubeconfig into pipe stream"""
+    if command == "kci":
+        command = "kc-inject"
     if detect_input() == "fifo":
         l_print_e(P_WARNING, f"Illegal pipe pass: to {command}, pipe input ignored")
     else:
@@ -2640,6 +2643,7 @@ def main_loop(args):
         "cgc",  # command mapping
         "api-r",  # command mapping
         "kc-inject",
+        "kci", # command mapping
         "-help",
         "help",
         "uniq",
@@ -2658,7 +2662,7 @@ def main_loop(args):
 
     if (command == "config" and cmd["kind"] == "get-contexts") or command == "cgc":  # generator
         command_cgc(command, args, cmd)
-    elif command == "kc-inject":  # generator
+    elif command in ["kc-inject", "kci"]:  # generator
         command_kc_inject(command, args, cmd, extracted_args_position)
     elif command in ["+", "-"]:  # filter
         command_filter(args)
