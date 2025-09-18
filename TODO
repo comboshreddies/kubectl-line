@@ -1,0 +1,43 @@
+find a way to make easier for redirecting
+ie 
+_ api-r | _ get {{kind}} -A -o json > /tmp/{{ns}}_{{kind}}_{{name}}.json
+does not work as _ in moment of _ get {{kind}} is not aware of ns and name
+
+_ get ... | _ @  /tmp/{{abcd}}
+
+-----
+
+kci -> kc-inject
+
+dumpToDir context <path> 
+ -> api-r | get kind -A | get kind name | @ /path 
+
+get kind itemList splitter for faster dump
+/ simbol , no get kind name is needed (it should be able to read yaml/json)
+should work only for json by default, it should check if it's yaml it shoud
+yell error
+so _ api-r | _ get kind -A | _ % /path/
+
+or dump /path
+
+_ . <shortcut> name for shorcut
+_ . dump
+
+_ split 
+
+TODO TO FIX
+does not work for multiple object_names:
+_ -n test-run get pod busybox1-7f67945dfc-sn529 nginx-sample1-6475dd48b7-wwktz -o json | less
+TO FIX improve objects detection, provide a list
+
+TO IMPROVE
+for _ ? maybe I could
+_ ? COLUMN 'expr' 'expr'
+it would be interpreted as 
+'expr' and 'expr' and ...
+then decode expr one by one
+nicer than parsing 
+_ -n test-run get pod | _ ? RESTARTS ?1 ge 3 | _ ? RESTARTS ?1 le 5
+maybe something like .. | _ ? RESTARTS '?1 ge 3' '?1 le 5'
+
+
