@@ -394,7 +394,7 @@ Command @ render yaml and json and there are no columns in those formats.
 Starters are those commands that you can start pipe sequence with:
 They either add some functionality (kc-inject) or are able to display
 some information that can be used in following pipe executions.
-Startes generate some content one can work with in pipe sequence.
+Starters generate some content one can work with in pipe sequence.
 
   _ kc-inject <file1> <file2> ...
     injects multiple kubectl config files in pipe stream
