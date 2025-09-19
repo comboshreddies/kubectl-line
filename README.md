@@ -78,7 +78,7 @@ for i in $LIST ; do
 done
 ```
 
-Sometimes I would delete or restart pod, sometimes I would exec, edit, remove or add labels.
+Sometimes I would delete pod, sometimes I would exec, edit, remove or add labels.
 Usual pattern of such executions is to get a list of items and then to operate on each item.
 
 
@@ -98,7 +98,8 @@ _ -n some get pod -l app=some | \
 _ delete pod {{name}}
 ```
 
-In example above -n is passed from first command to second.
+In example above -n switch and value are passed from first (left side) command to second (right side of pipe)
+implicitly.
 
 # Example of a bit more advanced usage
 
@@ -113,7 +114,7 @@ _ --context mini api-resources | \
 
 ## Executing same operation on multiple clusters 
 
-### single kubeconfig file
+### Single kubeconfig file
 
 If you have multiple clusters defined within same kubeconfig file,
 you can run same command on all of them:
@@ -123,7 +124,7 @@ _ config get-contexts | \
 _ -n prod get pod -l app=web
 ```
 
-### multiple kubeconfig files
+### Multiple kubeconfig files
 
 You can inject multiple kubeconfig files in a pipeline:
 ``` bash
@@ -132,7 +133,7 @@ _ config get-contexts | \
 _ -n prod get pod -l app=web
 ```
 
-### multiple kubeconfig files writing to local files
+### Multiple kubeconfig files writing to local files
 
 You might need to check the layout of same objects across multiple clusters, so you can inspect differences.
 ``` bash
@@ -140,9 +141,9 @@ _ kc-inject ~/.kube/west ~/.kube/east | \
 _ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
 ```
 
-## inspecting kubernetes
+## Inspecting kubernetes
 
-### getting all resources from cluster with a label
+### Getting all resources from cluster with a label
 
 If you like to get any object that is labeled with component=etcd then
 ```
@@ -150,7 +151,7 @@ _ api-resources | \
 _ get {{kind}} -A -l component=etcd
 ```
 
-### dump all cluster context 
+### Dump all cluster context 
 ``` bash
 _ kc-inject ~/.kube/europe ~/.kube/america | \
 _ config get-contexts | \
@@ -159,7 +160,7 @@ _ get {{kind}} -A | \
 _ get {{kind}} {{name}} -p yaml
 ```
 
-## shortcuts
+## Shortcuts
 
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
 and cgc instead config get-contexts (to speed up typing), kci instead of kc-inject
@@ -183,7 +184,7 @@ _ cgc | + NAME '^.*[euro|america].*$' |\
 _ get ns
 ```
 
-### internal filtering within cgc
+### Internal filtering within cgc
 
 ``` bash
 $ _ cgc
@@ -203,7 +204,7 @@ CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
 ```
 
 
-### internal filtering within api-r
+### Internal filtering within api-r
 ``` bash
 $ _ api-r pods
 NAME                                SHORTNAMES   APIVERSION                        NAMESPACED   KIND
@@ -242,7 +243,7 @@ Now each item in output file will have extended json format with headers that lo
 ...
 ```
 
-## dumping to correctly named files
+## Dumping to correctly named files
 
 If you do not like to extend manifest, you can put objects in correctly named files
 you can always use available {{ }} tags for example:
@@ -428,7 +429,7 @@ Makes specific column values unique (like api-resources might return duplicate r
 
 Commands cgc and api-r have their own internal filter so you can filter quicker.
 
-## terminators:
+## Terminators:
 
 Group of commands that you will execute as last in pipe sequence.
 
@@ -467,7 +468,7 @@ new pipe sequence compatible command.
 (for example: ... | _ sh './some_script {{KIND}}' | _ get {{kind}} | ...)
 
 
-## helpers:
+## Helpers:
 
   _ -help
    shows help for this tool  
@@ -481,7 +482,7 @@ new pipe sequence compatible command.
    show environment variables that can be set to troubleshoot/debug execution of this tool
 
 
-# natural flow pipe sequences
+# Natural flow pipe sequences
 
 
 Following execution pipe streams are allowed:
@@ -501,7 +502,7 @@ _ get ns | _ kc-inject
 would not make sense.
 
 
-# interesting examples to run
+# Interesting examples to run
 
 ## getting object that do not have labels
 ``` bash
