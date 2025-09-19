@@ -271,7 +271,7 @@ and then executed with template variables being substituted for real values.
 Check example below named 'storing all content of default context in structured directory'
 
 
-# Passing arguments between pipes
+# How does it work - Passing arguments between pipes
 
 If any parameter (like kubeconfig file, context, namespace) is being
 used on the previous pipe (to left) execution, it will be repeated
@@ -391,6 +391,8 @@ Startes generate some content one can work with in pipe sequence.
     injects multiple kubectl config files in pipe stream
     ( kubectl is limited to only one config file )
 
+  _ kci : shortcut for kc-inject
+
   _ cgc  : shortcut for config get-contexts
 
   _ config get-contexts
@@ -484,7 +486,7 @@ new pipe sequence compatible command.
 
 # Natural flow pipe sequences
 
-
+## allowed pipe flow
 Following execution pipe streams are allowed:
 
    kc-inject -> [ config get-contexts | api-resources | get | top | sh | ... ]
@@ -495,6 +497,7 @@ Following execution pipe streams are allowed:
 
    [ get | top ] -> [ get | top | sh | ... ]
 
+## example of wrong pipe flow
 You can't combine any pipe flow you might imagine, for example
 ``` bash
 _ get ns | _ kc-inject
@@ -556,6 +559,11 @@ _ api-r | _ + APIVERSION k8s.io
 ## storing all content of default context in structured directory
 ``` bash
 _ api-r | _ get {{kind}} -A | _ get {{kind}} {{name}} -o yaml |   _ @ /tmp/CLSTR/{{ns?NS:NONS}}/{{?:ns}}/{{kind}}/{{name}}.yaml
+```
+
+## running kubectl tks plugin nginx_inspect script on clusters within east and west kc files, filter in only clusters with prod in their name, and run tks plugin script on all pods labeled with app=nginx in webapp namespace
+``` bash
+_ kci west east | _ cgc prod | _ tks -n webapp start -l app=nginx nginx_inspect > {{k8s_pod}}.env`
 ```
 
 
