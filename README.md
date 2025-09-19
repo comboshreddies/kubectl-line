@@ -2,11 +2,12 @@
 
 A kubectl wrapper/plugin that enables pipe-streamed execution with automatic parameter propagation.
 
+Instead of running set of bash kubectl commands in sequence, run them in pipelined workflow.
 Instead of repeating --context, -n, or resource names across multiple commands, you can build pipelined workflows where parameters and resource identifiers flow automatically.
 
 It reduces repetitive typing and makes complex multi-step kubectl operations easier to express.
 
-## Simple example - restart all pods in namespace prod with label app=web
+## Ice breaker example - restart all pods in namespace prod with label app=web
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
@@ -24,6 +25,8 @@ Supports template tags ({{name}}, {{kind}}, {{ctx}}, etc.).
 Provides shortcuts (api-r → api-resources, cgc → config get-contexts, etc.).
 
 Adds filters for regex and conditional selection on columns.
+
+Adds injectors extending manifests for better visibility.
 
 # Installation and Setup
 
@@ -87,7 +90,7 @@ _ delete pod {{name}}
 
 In example above -n is passed from first command to second.
 
-# Example of advanced usage
+# Example of a bit more advanced usage
 
 ## Dumping
 For example I have a script that dumps all kubernetes objects from a cluster, but 
@@ -295,7 +298,7 @@ they will be shown, if they are empty they will be empty.
 Tags that have ?x are replaced with corresponding switch, or empty
 Tags without ?x: or ?: are either replaced or left as they are
 
-kubeconfig file related tags:
+## kubeconfig file related tags:
 
  ?x:kc -> conditional switch kubeconfig -> --kubeconfig config_file | ''
 
@@ -304,7 +307,7 @@ kubeconfig file related tags:
  kc -> kubeconfig -> config_file | {{kc}}
 
 
-context related tags:
+## context related tags:
 
  ?x:ctx  - conditional switch context -> --context ctx | ''
 
@@ -313,7 +316,7 @@ context related tags:
  ctx - context -> ctx | {{ctx}}
 
 
-namespace related tags:
+## namespace related tags:
 
  ?x:ns - conditional switch namespace -> -n ns | '' 
 
@@ -322,11 +325,11 @@ namespace related tags:
  ns - namespace -> namespace | {{ns}}
 
 
-kind tag: 
+## kind tag: 
 
  kind -> kind | {{kind}}
 
-name tag:
+## name tag:
 
  name -> name | {{name}}
 
