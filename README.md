@@ -1,6 +1,6 @@
 # A tool for pipe streamed kubectl execution
 
-## Ice breaker example 2 - restart all pods in namespace prod with label app=web
+## Ice breaker example 1 - restart all pods in namespace prod with label app=web
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
