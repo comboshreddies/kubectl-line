@@ -1,17 +1,19 @@
 # A tool for pipe streamed kubectl execution
 # Examples
-## restart all pods in namespace prod with label app=web
+## delete all pods in namespace prod with label app=web
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
-## restart all pods in namespace prod with label app=web in all clusters
+## get all pods in namespace prod with label app=web in all clusters
 ``` bash
-_ config get-contexts | _ -n prod get pod -l app=web | _ delete pod {{name}}
+_ config get-contexts | _ -n prod get pod -l app=web 
 ```
 ## delete all pods from prod namespace with not all containers ready
 ``` bash
 _ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
 ```
+
+More examples at the bottom.
 
 # Description
 
