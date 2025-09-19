@@ -12,8 +12,7 @@ _ config get-contexts | _ -n prod get pod -l app=web
 ``` bash
 _ -n prod get pod | _ ? READY ?1 ne ?2 | _ get pod {{name}} -o yaml
 ```
-## show app.conf file from all clusters within east and west kubeconfig, from all clusters that match prod,
-from web namespace and pods labeled with app=api
+## show app.conf file from all clusters within east and west kubeconfig, from all clusters that match prod, from web namespace and pods labeled with app=api
 ``` bash
 _ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
 ```
