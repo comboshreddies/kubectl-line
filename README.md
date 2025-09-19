@@ -333,24 +333,38 @@ Tags without ?x: or ?: are either replaced or left as they are
 
  name -> name | {{name}}
 
+## column based dynamic tags
 
 Also for any named column like ROLE, AGE, NAME, NAMESPACE ... in previous pipe result
 (previous pipe output that is input for currently executing pipe stage)
 one can address column names like {{ROLE}}, {{AGE}}, {{NAME}}, {{NAMESPACE}}.
 
-This tool relies on column names, but tries to be flexible on any column name format it gets,
-so as long as you keep column names with all capital letters, you can use custom-columns formatting of output.
+# few more words on named columns
+
+Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND and such,
+but tries to be flexible on any column name format it gets.
+As long as you keep column names with all capital letters, you can use custom-columns formatting of output.
 
 For example if you specify
 ``` bash
 -o custom-columns=ABCD:.metadata.name,XYZ:.metadata.namespace,OPQ:.kind
 ```
-you should be able to use those columns with their custom names.
-Keep in mind that this tool relies on column names like NAME, NAMESPACE, KIND and such.
+you should be able to use those columns (ABCD, XYZ, OPQ) with their custom names.
+so for example
+``` bash
+... | _ sh 'echo {{ABCD}}' 
+```
+should work in same way as
+``` bash
+_ api-r KIND 'Pod$' | _ sh 'echo {{APIVERSION}}'
+``` 
+should work
 
+# when you should not rely on custom column names as tags
 
 Command @ does have special format for tags, it supports format
 {{item?if_item_exists:if_item_does_not_exist}}, where item is kc, ctx, ns, kind, name
+Command @ render yaml and json and there are no columns in those formats.
 
 # Flow arrangements
 
