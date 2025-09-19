@@ -381,7 +381,7 @@ _ api-r KIND 'Pod$' | _ sh 'echo {{APIVERSION}}'
 ``` 
 should work
 
-# when you should not rely on custom column names as tags
+## when you should not rely on custom column names as tags
 
 Command @ does have special format for tags, it supports format
 {{item?if_item_exists:if_item_does_not_exist}}, where item is kc, ctx, ns, kind, name
