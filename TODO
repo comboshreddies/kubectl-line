@@ -20,7 +20,7 @@ so _ api-r | _ get kind -A | _ % /path/
 
 or dump /path
 
-_ . <shortcut> name for shorcut
+_ . <shortcut> name for shortcut
 _ . dump
 
 _ split 
@@ -39,5 +39,4 @@ then decode expr one by one
 nicer than parsing 
 _ -n test-run get pod | _ ? RESTARTS ?1 ge 3 | _ ? RESTARTS ?1 le 5
 maybe something like .. | _ ? RESTARTS '?1 ge 3' '?1 le 5'
-
 
