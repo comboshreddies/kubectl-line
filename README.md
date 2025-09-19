@@ -1,16 +1,26 @@
 # A tool for pipe streamed kubectl execution
 
+## Ice breaker example 2 - restart all pods in namespace prod with label app=web
+``` bash
+_ -n prod get pod -l app=web | _ delete pod {{name}}
+```
+## Ice breaker example 2 - restart all pods in namespace prod with label app=web in all clusters
+``` bash
+_ config get-contexts | _ -n prod get pod -l app=web | _ delete pod {{name}}
+```
+## Ice breaker example 3 - delete all pods from prod namespace with not all containers ready
+``` bash
+_ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
+```
+
+# Description
+
 A kubectl wrapper/plugin that enables pipe-streamed execution with automatic parameter propagation.
 
 Instead of running set of bash kubectl commands in sequence, run them in pipelined workflow.
 Instead of repeating --context, -n, or resource names across multiple commands, you can build pipelined workflows where parameters and resource identifiers flow automatically.
 
 It reduces repetitive typing and makes complex multi-step kubectl operations easier to express.
-
-## Ice breaker example - restart all pods in namespace prod with label app=web
-``` bash
-_ -n prod get pod -l app=web | _ delete pod {{name}}
-```
 
 # Features 
 
@@ -152,11 +162,12 @@ _ get {{kind}} {{name}} -p yaml
 ## shortcuts
 
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
-and cgc instead config get-contexts (to speed up typing), and few additional commands for filtering.
+and cgc instead config get-contexts (to speed up typing), kci instead of kc-inject
+and few additional commands for filtering.
 
 With supported shortcuts you could type same example from above in abbreviated form:
 ``` bash
-_ kc-inject ~/.kube/europe ~/.kube/america | \
+_ kci ~/.kube/europe ~/.kube/america | \
 _ cgc | \
 _ api-r | \
 _ get {{kind}} -A | \
@@ -213,7 +224,7 @@ pods                                po           v1                             
 ## Injecting extented attributes
 
 As you can dump multiple objects from multiple contexts and kubeconfig files,
-specific commands you can additionally inject (extend) format
+there are commands that can additionally inject (extend) format
 of yaml/json manifest files with specific kubernetes-config file and context attributes.
 
 ``` bash
