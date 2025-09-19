@@ -8,10 +8,16 @@ _ -n prod get pod -l app=web | _ delete pod {{name}}
 ``` bash
 _ config get-contexts | _ -n prod get pod -l app=web 
 ```
-## delete all pods from prod namespace with not all containers ready
+## dump all pods from prod namespace with not all containers ready
 ``` bash
-_ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
+_ -n prod get pod | _ ? READY ?1 ne ?2 | _ get pod {{name}} -o yaml
 ```
+## get app conf file from all clusters within east and west kubeconfig , from all clusters that match prod,
+from web namespace and pods labeled with app=api
+``` bash
+_ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
+```
+
 
 More examples at the bottom.
 
@@ -29,6 +35,8 @@ It reduces repetitive typing and makes complex multi-step and multi-cluster kube
 Works as a kubectl plugin (kubectl line) or standalone (_).
 
 Behaves like kubectl when not used in a pipeline.
+
+You can run other plugins from this plugin.
 
 Automatically passes context, namespace, kubeconfig, kind, name between piped commands.
 
