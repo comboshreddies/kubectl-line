@@ -20,7 +20,7 @@ A kubectl wrapper/plugin that enables pipe-streamed execution with automatic par
 Instead of running set of bash kubectl commands in sequence, run them in pipelined workflow.
 Instead of repeating --context, -n, or resource names across multiple commands, you can build pipelined workflows where parameters and resource identifiers flow automatically.
 
-It reduces repetitive typing and makes complex multi-step kubectl operations easier to express.
+It reduces repetitive typing and makes complex multi-step and multi-cluster kubectl operations easier to express.
 
 # Features 
 
@@ -82,7 +82,7 @@ Sometimes I would delete pod, sometimes I would exec, edit, remove or add labels
 Usual pattern of such executions is to get a list of items and then to operate on each item.
 
 
-With this tool I can append line or _ after kubectl that selected resources, and add pipe:
+With this tool I can observe, then append line or _ after kubectl that selected resources, and add pipe:
 ``` bash
 kubectl line -n some get pod -l app=some | \
  kubectl line delete pod {{name}}
