@@ -1,14 +1,14 @@
 # A tool for pipe streamed kubectl execution
-
-## Ice breaker example 1 - restart all pods in namespace prod with label app=web
+# Examples
+## restart all pods in namespace prod with label app=web
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
-## Ice breaker example 2 - restart all pods in namespace prod with label app=web in all clusters
+## restart all pods in namespace prod with label app=web in all clusters
 ``` bash
 _ config get-contexts | _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
-## Ice breaker example 3 - delete all pods from prod namespace with not all containers ready
+## delete all pods from prod namespace with not all containers ready
 ``` bash
 _ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
 ```
