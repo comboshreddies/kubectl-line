@@ -2394,12 +2394,24 @@ def detect_value_nmw(to_check, column):
     """detect node metrics value"""
     # NodeMetrics WINDOW
     value = {}
-    match = re.match(r"(\d+d)*(\d+h)*(\d+m)*((\d*.)*\d+s)*", to_check)
+    match = re.match(r"(\d+d)*(\d+h)*(\d+m)*((\d*.)*\d+s)*$", to_check)
     if match and match.group(0) and "CPU" not in column:
-        days = int(match.group(1)[:-1])
-        hours = int(match.group(2)[:-1])
-        minutes = int(match.group(3)[:-1])
-        seconds = float(match.group(4)[:-1])
+        if match.group(1) and len(match.group(1)) > 1:
+            days = int(match.group(1)[:-1])
+        else:
+            days = 0
+        if match.group(2) and len(match.group(2)) > 1:
+            hours = int(match.group(2)[:-1])
+        else:
+            hours = 0
+        if match.group(3) and len(match.group(3)) > 1:
+            minutes = int(match.group(3)[:-1])
+        else:
+            minutes = 0
+        if match.group(4) and len(match.group(4)) > 1:
+            seconds = float(match.group(4)[:-1])
+        else:
+            seconds = 0
         value['int'] = days * 86400 + hours * 3600 + minutes * 60 + seconds
         value['type'] = 'NODE_METRICS'
     return value
@@ -2616,7 +2628,7 @@ def detect_value(to_check, column):
     if not value:
         value = detect_value_exp_float(to_check)
     if not value:
-        l_print_e(P_ERROR, f"unknown format of a column {column}, assume string")
+        l_print_e(P_WARNING, f"unknown format of a column {column}, assume string")
         value[0] = to_check
         value['type'] = "STRING"
     return value
@@ -2727,13 +2739,13 @@ def command_question(args):
                         internal_operand = q_operand2[1:]
                         external_operand = q_operand1
                     ext_value = detect_value(external_operand, "")
-                    if q_operator == "_?":
+                    if  q_operator == "_?":
                         l_print_e("debug? operator", "--------")
                         l_print_e("debug? internal op", internal_operand)
                         l_print_e("debug? internal value", value)
                         l_print_e("debug? external op", external_operand)
                         l_print_e("debug? external value", ext_value)
-                    if internal_operand in ext_value:
+                    if ext_value['type'] == value['type'] and internal_operand in ext_value and internal_operand in value:
                         if type(ext_value[internal_operand]) == type(value[internal_operand]):
                             test_result = q_evaluate(value[internal_operand], ext_value[internal_operand], q_operator)
                         else:
@@ -2744,8 +2756,8 @@ def command_question(args):
                         elif re.match(r"^(\d+)$", internal_operand) and int(internal_operand) in value:
                             qo_int = value[int(internal_operand)]
                         else:
-                            l_print_e("error?", f"operand {internal_operand}"
-                                      f"not found in values {value}"
+                            l_print_e("error?", f"operand {internal_operand} "
+                                      f"not found in values {value} : {to_check}"
                                       )
                             continue
                         test_result = False
