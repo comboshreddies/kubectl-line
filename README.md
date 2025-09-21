@@ -128,7 +128,7 @@ you can run same command on all of them:
 
 ``` bash
 _ config get-contexts | \
-_ -n prod get pod -l app=web
+ _ -n prod get pod -l app=web
 ```
 
 ### Multiple kubeconfig files
@@ -136,8 +136,8 @@ _ -n prod get pod -l app=web
 You can inject multiple kubeconfig files in a pipeline:
 ``` bash
 _ kc-inject first_kubeconfig_file second_kubeconfig_file | \
-_ config get-contexts | \
-_ -n prod get pod -l app=web
+ _ config get-contexts | \
+ _ -n prod get pod -l app=web
 ```
 
 ### Multiple kubeconfig files writing to local files
@@ -145,7 +145,7 @@ _ -n prod get pod -l app=web
 You might need to check the layout of same objects across multiple clusters, so you can inspect differences.
 ``` bash
 _ kc-inject ~/.kube/west ~/.kube/east | \
-_ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
+ _ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
 ```
 
 ## Inspecting kubernetes
@@ -155,16 +155,16 @@ _ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
 If you like to get any object that is labeled with component=etcd then
 ```
 _ api-resources | \
-_ get {{kind}} -A -l component=etcd
+ _ get {{kind}} -A -l component=etcd
 ```
 
 ### Dump all cluster context 
 ``` bash
 _ kc-inject ~/.kube/europe ~/.kube/america | \
-_ config get-contexts | \
-_ api-resources | \
-_ get {{kind}} -A | \
-_ get {{kind}} {{name}} -p yaml
+ _ config get-contexts | \
+ _ api-resources | \
+ _ get {{kind}} -A | \
+ _ get {{kind}} {{name}} -p yaml
 ```
 
 ## Shortcuts
@@ -176,10 +176,10 @@ and few additional commands for filtering.
 With supported shortcuts you could type same example from above in abbreviated form:
 ``` bash
 _ kci ~/.kube/europe ~/.kube/america | \
-_ cgc | \
-_ api-r | \
-_ get {{kind}} -A | \
-_ get {{kind}} {{name}} -p yaml
+ _ cgc | \
+ _ api-r | \
+ _ get {{kind}} -A | \
+ _ get {{kind}} {{name}} -p yaml
 ```
 
 ## Filtering
@@ -188,7 +188,7 @@ _ get {{kind}} {{name}} -p yaml
 If you have all contexts in single file you can filter contexts:
 ``` bash
 _ cgc | + NAME '^.*[euro|america].*$' |\
-_ get ns
+ _ get ns
 ```
 
 ### Internal filtering within cgc
@@ -237,7 +237,8 @@ of yaml/json manifest files with specific kubernetes-config file and context att
 
 ``` bash
 _ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
-_ -n kube-system get pod etcd-minikube -o json | _ json_inject > /tmp/all.json
+ _ -n kube-system get pod etcd-minikube -o json | \
+ _ json_inject > /tmp/all.json
 ```
 Now each item in output file will have extended json format with headers that look like:
 ``` bash
@@ -256,13 +257,13 @@ If you do not like to extend manifest, you can put objects in correctly named fi
 you can always use available {{ }} tags for example:
 ``` bash
 _ config get-contexts | \
-_ -n kube-system get pod -l k8s-app=kube-dns -o yaml \> /tmp/{{ctx}}_label_kube_dns_pods.yaml
+ _ -n kube-system get pod -l k8s-app=kube-dns -o yaml \> /tmp/{{ctx}}_label_kube_dns_pods.yaml
 ```
 or
 ``` bash
 _ config get-contexts | \
-_ -n kube-system get pod -l k8s-app=kube-dns | \
-_ get {{kind}} {{name}}  \> /tmp/{{ctx}}_{{kind}}_{{name}}.yaml
+ _ -n kube-system get pod -l k8s-app=kube-dns | \
+ _ get {{kind}} {{name}}  \> /tmp/{{ctx}}_{{kind}}_{{name}}.yaml
 ```
 Tags like {{ctx}} {{kind}}, {{name}}, if available, are replaced.
 
