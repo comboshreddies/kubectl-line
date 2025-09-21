@@ -38,7 +38,7 @@ Provides shortcuts (api-r → api-resources, cgc → config get-contexts, .
 
 Adds filters for regex and conditional selection on columns.
 
-Adds injectors extending manifests for better visibility.
+Adds injectors extending manifests for better visibility (of stored files).
 
 Extends kubectl abilities, you can run on multiple kubeconfig files, multiple commands, multiple resource kinds.
 
