@@ -1,6 +1,6 @@
 # A tool for pipe streamed kubectl execution
 ## Examples
-### delete all pods in namespace prod with label app=web
+delete all pods in namespace prod with label app=web
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
@@ -18,7 +18,7 @@ _ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- 
 ```
 show any kind of object (all kinds) with label app=web
 ``` bash
-_ api-r | _ get {{name}} -A -l app=web
+_ api-resources | _ get {{kind}} -A -l app=web
 ```
 
 More examples at the bottom.
