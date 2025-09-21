@@ -4,7 +4,7 @@
 ``` bash
 _ -n prod get pod -l app=web | _ delete pod {{name}}
 ```
-## get all pods in namespace prod with label app=web in all clusters
+## get all pods from all clusters in namespace prod with label app=web in all clusters
 ``` bash
 _ config get-contexts | _ -n prod get pod -l app=web 
 ```
@@ -16,7 +16,10 @@ _ -n prod get pod | _ ? READY ?1 ne ?2 | _ get pod {{name}} -o yaml
 ``` bash
 _ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
 ```
-
+## show any kind of object (all kinds) with label app=web
+``` bash
+_ api-r | _ get {{name}} -A -l app=web
+```
 
 More examples at the bottom.
 
@@ -39,9 +42,9 @@ Run other plugins from this plugin.
 
 Automatically passes context, namespace, kubeconfig, kind, name between piped commands.
 
-Supports template tags ({{name}}, {{kind}}, {{ctx}}, etc.).
+Supports template tags ({{name}}, {{kind}}, {{ctx}}, etc.
 
-Provides shortcuts (api-r → api-resources, cgc → config get-contexts, etc.).
+Provides shortcuts (api-r → api-resources, cgc → config get-contexts, .
 
 Adds filters for regex and conditional selection on columns.
 
