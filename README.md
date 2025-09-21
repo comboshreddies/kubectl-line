@@ -1,40 +1,30 @@
 # A tool for pipe streamed kubectl execution
 ## Examples
-delete all pods in namespace prod with label app=web
-``` bash
-_ -n prod get pod -l app=web | _ delete pod {{name}}
-```
-get all pods from all clusters in namespace prod with label app=web in all clusters
-``` bash
-_ config get-contexts | _ -n prod get pod -l app=web 
-```
-dump all pods from prod namespace with not all containers ready
-``` bash
-_ -n prod get pod | _ ? READY ?1 ne ?2 | _ get pod {{name}} -o yaml
-```
-show app.conf file from all clusters within east and west kubeconfig, from all clusters that match prod, from web namespace and pods labeled with app=api
-``` bash
-_ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
-```
 show any kind of object (all kinds) with label app=web
 ``` bash
 _ api-resources | _ get {{kind}} -A -l app=web
 ```
-
+from all clusters get pods in namespace prod with label app=web 
+``` bash
+_ config get-contexts | _ -n prod get pod -l app=web 
+```
+restart all pods from prod namespace with not all containers ready
+``` bash
+_ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
+```
+show app.conf file from all clusters from east and west kubeconfig files, from all clusters that match prod, from web namespace and pods labeled with app=api
+``` bash
+_ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
+```
 More examples at the bottom.
 
 # Description
 
-A kubectl wrapper/plugin that enables pipe-streamed execution with automatic parameter propagation.
-
 Instead of running set of bash kubectl commands in sequence, run them in pipelined workflow.
-Instead of repeating --context, -n, or resource names across multiple commands, you can build pipelined workflows where parameters and resource identifiers flow automatically.
-
-It reduces repetitive typing and makes complex multi-step and multi-cluster kubectl operations easier to express.
 
 # Features 
 
-Works as a kubectl plugin (kubectl line) or standalone (_).
+Works as a kubectl plugin (kubectl line) or standalone (_) wrapper.
 
 Behaves like kubectl when not used in a pipeline.
 
@@ -49,6 +39,11 @@ Provides shortcuts (api-r → api-resources, cgc → config get-contexts, .
 Adds filters for regex and conditional selection on columns.
 
 Adds injectors extending manifests for better visibility.
+
+Extends kubectl abilities, you can run on multiple kubeconfig files, multiple commands, multiple resource kinds.
+
+Reduces repetitive typing and makes complex multi-step and multi-cluster kubectl operations easier to express.
+
 
 # Installation and Setup
 
