@@ -97,12 +97,12 @@ kubectl line -n some get pod -l app=some | \
 or if you've linked kubectl-line to kubectl-_
 ```bash
 kubectl _ -n some get pod -l app=some | \
-kubectl _ line delete pod {{name}}
+ kubectl _ line delete pod {{name}}
 ```
 or if you've linked kubectl-line to _
 ```bash
 _ -n some get pod -l app=some | \
-_ delete pod {{name}}
+ _ delete pod {{name}}
 ```
 
 In example above -n switch and value are passed from first (left side) command to second (right side of pipe)
@@ -110,30 +110,38 @@ implicitly.
 
 # Example of a bit more advanced usage
 
-## Dumping
-For example I have a script that dumps all kubernetes objects from a cluster, but 
-with this tool I can do dump with:
+## Executing same kubectl operation already filtered objects 
+``` bash
+_ -n monitoring get pod -l app=prom | _ exec -- env 
+```
+
+## executing same kubectl operation on all available resource kinds (default cluster)
+``` bash
+_ api-resources | get {{kind}} -A
+```
+
+## dumping all resources by resource kind (faster, less organized)
+``` bash
+_ --context us-east-001 api-resources | \
+ _ get {{kind}} -A \> /tmp/{{ctx}}_{{kind}}.yaml
+```
+
+## dumping all resources by namespace, kind, name (slower, better organized)
 ``` bash
 _ --context mini api-resources | \
  _ get {{kind}} -A | \
- _ get {{kind}} {{name}} -o yaml \> /tmp/{{ns}}_{{kind}}_{{name}}.yaml 
+ _ get {{kind}} {{name}} -o yaml \> /tmp/{{ctx}}_{{ns}}_{{kind}}_{{name}}.yaml 
 ```
 
 ## Executing same operation on multiple clusters 
 
-### Single kubeconfig file
-
-If you have multiple clusters defined within same kubeconfig file,
-you can run same command on all of them:
-
+### Single kubeconfig file, all clusters
 ``` bash
 _ config get-contexts | \
  _ -n prod get pod -l app=web
 ```
 
-### Multiple kubeconfig files
-
-You can inject multiple kubeconfig files in a pipeline:
+### Multiple kubeconfig files (kube-config-inject), all clusters
 ``` bash
 _ kc-inject first_kubeconfig_file second_kubeconfig_file | \
  _ config get-contexts | \
@@ -142,29 +150,10 @@ _ kc-inject first_kubeconfig_file second_kubeconfig_file | \
 
 ### Multiple kubeconfig files writing to local files
 
-You might need to check the layout of same objects across multiple clusters, so you can inspect differences.
+You might need to check the layout of same objects across multiple clusters, so you can inspect differences. (for example pod, or config map, or secret)
 ``` bash
 _ kc-inject ~/.kube/west ~/.kube/east | \
  _ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
-```
-
-## Inspecting kubernetes
-
-### Getting all resources from cluster with a label
-
-If you like to get any object that is labeled with component=etcd then
-```
-_ api-resources | \
- _ get {{kind}} -A -l component=etcd
-```
-
-### Dump all cluster context 
-``` bash
-_ kc-inject ~/.kube/europe ~/.kube/america | \
- _ config get-contexts | \
- _ api-resources | \
- _ get {{kind}} -A | \
- _ get {{kind}} {{name}} -p yaml
 ```
 
 ## Shortcuts
@@ -179,7 +168,7 @@ _ kci ~/.kube/europe ~/.kube/america | \
  _ cgc | \
  _ api-r | \
  _ get {{kind}} -A | \
- _ get {{kind}} {{name}} -p yaml
+ _ get {{kind}} {{name}} -o yaml
 ```
 
 ## Filtering
@@ -187,7 +176,8 @@ _ kci ~/.kube/europe ~/.kube/america | \
 ### Filtering with separate pipe
 If you have all contexts in single file you can filter contexts:
 ``` bash
-_ cgc | + NAME '^.*[euro|america].*$' |\
+_ cgc | \
+ _ + NAME '^.*[euro|america].*$' |\
  _ get ns
 ```
 
@@ -209,7 +199,7 @@ $ _ cgc NAME miku
 CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
           miku       minikube   minikube   default
 ```
-
+note: if no column name in capital letters specified, NAME column is default
 
 ### Internal filtering within api-r
 ``` bash
@@ -227,9 +217,9 @@ $ _ api-r KIND 'Pod$'
 NAME                                SHORTNAMES   APIVERSION                        NAMESPACED   KIND
 pods                                po           v1                                true         Pod
 ```
+note: if no column name is specified (in capital letters), NAME column is default
 
-
-## Injecting extented attributes
+## Injecting extented yaml/json attributes
 
 As you can dump multiple objects from multiple contexts and kubeconfig files,
 there are commands that can additionally inject (extend) format
@@ -465,7 +455,7 @@ Group of commands that you will execute as last in pipe sequence.
   _ @
 
   will work only if previous output format is yaml or json, and it will
-  store file in specific templated directory
+  store file in specific templated directory path (ie will make needed dirs)
 
 
 

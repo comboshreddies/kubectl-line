@@ -1071,12 +1071,12 @@ def command_api_r(command, args, cmd, extracted_args_position):
         command = "api-resources"
         args[extracted_args_position[1]] = "api-resources"
     if detect_input() == "fifo":
-        command_api_r_in_pipe(command, args, cmd)
+        command_api_r_in_pipe(command, args, cmd, extracted_args_position)
     else:  # command api-resources, detect input is not fifo
-        exec_add_args = [args[1]]
+        exec_add_args = args[1:extracted_args_position[1] + 1]
         filter_args = []
-        if len(args) > 2:
-            for item in args[2:]:
+        if len(args) > extracted_args_position[1]:
+            for item in args[extracted_args_position[1]+1:]:
                 if len(item) and item[0] == '-':
                     exec_add_args.append(item)
                 else:
