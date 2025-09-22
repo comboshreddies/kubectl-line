@@ -34,7 +34,7 @@ Automatically passes context, namespace, kubeconfig, kind, name between piped co
 
 Supports template tags ({{name}}, {{kind}}, {{ctx}}, etc.
 
-Provides shortcuts (api-r → api-resources, cgc → config get-contexts, .
+Provides shortcuts (api-r → api-resources, cgc → config get-contexts, ... ).
 
 Adds filters for regex and conditional selection on columns.
 
