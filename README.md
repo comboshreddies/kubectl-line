@@ -420,10 +420,12 @@ Filter in or filter out specific column name on given regexp:
 
 
 Filters out specific column with expression (gt,lt,le,ge,eq,ne,re):
+
   _ ? <column_name> <arg1> <operator> <arg2> 
 
 
 Makes specific column values unique (like api-resources might return duplicate resource kind):
+
   _ uniq <column_name>
 
 
