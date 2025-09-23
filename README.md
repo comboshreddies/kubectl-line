@@ -182,7 +182,7 @@ _ cgc | \
  _ get ns
 ```
 
-### Internal filtering within cgc
+### Internal filtering within cgc (config get-contexts shortcut)
 
 ``` bash
 $ _ cgc
@@ -202,7 +202,7 @@ CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
 ```
 note: if no column name in capital letters specified, NAME column is default
 
-### Internal filtering within api-r
+### Internal filtering within api-r (api-resources shortcut)
 ``` bash
 $ _ api-r pods
 NAME                                SHORTNAMES   APIVERSION                        NAMESPACED   KIND
@@ -217,6 +217,12 @@ poddisruptionbudgets                pdb          policy/v1                      
 $ _ api-r KIND 'Pod$'
 NAME                                SHORTNAMES   APIVERSION                        NAMESPACED   KIND
 pods                                po           v1                                true         Pod
+# _ api-r APIVERSION apps/v1
+NAME                                SHORTNAMES   APIVERSION                        NAMESPACED   KIND
+daemonsets                          ds           apps/v1                           true         DaemonSet
+deployments                         deploy       apps/v1                           true         Deployment
+replicasets                         rs           apps/v1                           true         ReplicaSet
+statefulsets                        sts          apps/v1                           true         StatefulSet
 ```
 note: if no column name is specified (in capital letters), NAME column is default
 
