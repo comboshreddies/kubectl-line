@@ -14,7 +14,7 @@ _ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
 ```
 show app.conf file from all clusters from east and west kubeconfig files, from all clusters that match prod, from web namespace and pods labeled with app=api
 ``` bash
-_ kconfig-inject east west | _ config get-contexts prod | \
+_ kconf-files east west | _ config get-contexts prod | \
  _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
 ```
 More examples at the bottom.
@@ -142,9 +142,9 @@ _ config get-contexts | \
  _ -n prod get pod -l app=web
 ```
 
-### Multiple kubeconfig files (kube-config-inject), all clusters
+### Multiple kubeconfig files (kconf-file), all clusters
 ``` bash
-_ kc-inject first_kubeconfig_file second_kubeconfig_file | \
+_ kconf-file first_kubeconfig_file second_kubeconfig_file | \
  _ config get-contexts | \
  _ -n prod get pod -l app=web
 ```
@@ -153,19 +153,19 @@ _ kc-inject first_kubeconfig_file second_kubeconfig_file | \
 
 You might need to check the layout of same objects across multiple clusters, so you can inspect differences. (for example pod, or config map, or secret)
 ``` bash
-_ kc-inject ~/.kube/west ~/.kube/east | \
+_ kc-file ~/.kube/west ~/.kube/east | \
  _ -n kube-system get pod -l component=etcd -o json \> /tmp/{{ctx}}_pod_etcd.json
 ```
 
 ## Shortcuts
 
 This kubectl wrapper provides some shortcuts like api-r instead of api-resources
-and cgc instead config get-contexts (to speed up typing), kci instead of kc-inject
+and cgc instead config get-contexts (to speed up typing), kcf instead of kc-file or kconf-file
 and few additional commands for filtering.
 
 With supported shortcuts you could type same example from above in abbreviated form:
 ``` bash
-_ kci ~/.kube/europe ~/.kube/america | \
+_ kcf ~/.kube/europe ~/.kube/america | \
  _ cgc | \
  _ api-r | \
  _ get {{kind}} -A | \
@@ -227,7 +227,7 @@ there are commands that can additionally inject (extend) format
 of yaml/json manifest files with specific kubernetes-config file and context attributes.
 
 ``` bash
-_ kc-inject ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
+_ kc-file ~/.kube/config ~/.kube/account1 ~/.kube/account2 ~/.kube/region-eu | \
  _ -n kube-system get pod etcd-minikube -o json | \
  _ json_inject > /tmp/all.json
 ```
@@ -382,15 +382,15 @@ Command @ render yaml and json and there are no columns in those formats.
 
 ## Starters (ie generators):
 Starters are those commands that you can start pipe sequence with:
-They either add some functionality (kc-inject) or are able to display
+They either add some functionality (kc-file) or are able to display
 some information that can be used in following pipe executions.
 Starters generate some content one can work with in pipe sequence.
 
-  _ kc-inject <file1> <file2> ...
+  _ kc-file <file1> <file2> ...
     injects multiple kubectl config files in pipe stream
     ( kubectl is limited to only one config file )
 
-  _ kci : shortcut for kc-inject
+  _ kcf : shortcut for kc-file
 
   _ cgc  : shortcut for config get-contexts
 
@@ -564,7 +564,7 @@ _ api-r | _ get {{kind}} -A | _ get {{kind}} {{name}} -o yaml |   _ @ /tmp/CLSTR
 
 ## running kubectl tks plugin nginx_inspect script on clusters within east and west kc files, filter in only clusters with prod in their name, and run tks plugin script on all pods labeled with app=nginx in webapp namespace
 ``` bash
-_ kci west east | _ cgc prod | _ tks -n webapp start -l app=nginx nginx_inspect > {{k8s_pod}}.env`
+_ kcf west east | _ cgc prod | _ tks -n webapp start -l app=nginx nginx_inspect > {{k8s_pod}}.env`
 ```
 
 

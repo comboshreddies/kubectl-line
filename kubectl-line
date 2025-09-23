@@ -1193,8 +1193,6 @@ def command_cgc(command, args, cmd):
 
 def command_kc_inject(command, args, cmd, extracted_args_position):
     """inject more than one kubeconfig into pipe stream"""
-    if command in ["kci","kconfig-inject"]:
-        command = "kc-inject"
     if detect_input() == "fifo":
         l_print_e(P_WARNING, f"Illegal pipe pass: to {command}, pipe input ignored")
     else:
@@ -2895,7 +2893,10 @@ def main_loop(args):
         "api-r",  # command mapping, alias
         "kc-inject",
         "kci",  # command mapping, alias
-        "kconfig-inject", # command mapping alias
+        "kconf-inject", # command mapping alias
+        "kconf-file", # command map alias
+        "kconf-files",
+        "kcf", # command alias
         "-help",
         "help",
         "uniq",
@@ -2915,7 +2916,8 @@ def main_loop(args):
         return -2
     if (command == "config" and cmd["kind"] == "get-contexts") or command == "cgc":  # generator
         command_cgc(command, args, cmd)
-    elif command in ["kc-inject", "kci","kconfig-inject"]:  # generator
+    elif command in ["kc-inject", "kci","kconf-inject","kc-file","kconf-file","kconf-files","kcf"]:  # generator
+        command = "kc-inject"
         command_kc_inject(command, args, cmd, extracted_args_position)
     elif command in ["+", "-"]:  # filter
         command_filter(args)
