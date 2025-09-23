@@ -14,7 +14,7 @@ _ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
 ```
 show app.conf file from all clusters from east and west kubeconfig files, from all clusters that match prod, from web namespace and pods labeled with app=api
 ``` bash
-_ kci east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
+_ kc-inject east west | _ cgc prod | _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
 ```
 More examples at the bottom.
 
@@ -32,9 +32,9 @@ Run other plugins from this plugin.
 
 Automatically passes context, namespace, kubeconfig, kind, name between piped commands.
 
-Supports template tags ({{name}}, {{kind}}, {{ctx}}, etc.
+Supports template tags ( {{name}}, {{kind}}, {{ctx}}, etc. )
 
-Provides shortcuts (api-r → api-resources, cgc → config get-contexts, ... ).
+Provides shortcuts ( api-r → api-resources, cgc → config get-contexts, ... ).
 
 Adds filters for regex and conditional selection on columns.
 
