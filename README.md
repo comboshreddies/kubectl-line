@@ -14,7 +14,7 @@ _ -n prod get pod | _ ? READY ?1 ne ?2 | _ delete pod {{name}}
 ```
 show app.conf file from all clusters from east and west kubeconfig files, from all clusters that match prod, from web namespace and pods labeled with app=api
 ``` bash
-_ kc-inject east west | _ config get-contexts prod | \
+_ kconfig-inject east west | _ config get-contexts prod | \
  _ -n web get pod -l app=api | _ exec {{name}} -- cat /app.conf
 ```
 More examples at the bottom.
