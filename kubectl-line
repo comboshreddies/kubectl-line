@@ -706,6 +706,35 @@ def system_exec_post_filter(cmd, column_name, regex):
                     print(line, end="")
 
 
+def system_exec_map(cmd):
+    """post filter on specific column and regexp"""
+    if P_DEBUG:
+        l_print_e(P_EXEC, f"{cmd} | map")
+    exec_args = ["/bin/bash", "-c", cmd]
+    if not P_DISABLE_CACHE and cmd in line_command_cache:
+        command_output = line_command_cache[cmd]
+        if P_DEBUG:
+            l_print_e(P_DEBUG, f"cache hit on : {cmd}")
+    else:
+        try:
+            result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as exc:
+            l_print_e(P_ERROR, f"executing: {exc.cmd[2:]}")
+            if len(exc.stdout):
+                print(f"{exc.stdout}", flush=True, end="")
+            if len(exc.stderr):
+                l_print_e(P_ERROR, f":stderr:{exc.stderr}")
+            if not P_IGNORE_ERRORS:
+                sys.exit(exc.returncode)
+            else:
+                l_print_e(P_ERROR, f":stderr: exit code {exc.returncode}, ignoring error")
+            return []
+        command_output = result.stdout
+        if not P_DISABLE_CACHE:
+            if cmd not in line_command_cache:
+                line_command_cache[cmd] = command_output
+    return command_output.split("\n")
+
 def system_exec(cmd):
     """wraps command execution"""
     if P_DEBUG:
@@ -1071,7 +1100,7 @@ def command_api_r(command, args, cmd, extracted_args_position):
         command = "api-resources"
         args[extracted_args_position[1]] = "api-resources"
     if detect_input() == "fifo":
-        command_api_r_in_pipe(command, args, cmd, extracted_args_position)
+        command_api_r_in_pipe(command, args, cmd)
     else:  # command api-resources, detect input is not fifo
         exec_add_args = args[1:extracted_args_position[1] + 1]
         filter_args = []
@@ -1610,6 +1639,88 @@ def command_others(command, args, cmd, extracted_args_position, get_flags, plugi
         else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
             exec_args = ["kubectl"] + args[1:]
         system_exec(" ".join(exec_args))
+
+
+def command_map(command, args, cmd, extracted_args_position, get_flags, plugins):
+    """mapping line to some destination"""
+    args[extracted_args_position[1]] = "get"
+    args.append("-o")
+    args.append('custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind"')
+    if detect_input() == "fifo":
+        # command_map_pipe_in(command, args, cmd, extracted_args_position, get_flags, plugins)
+        pass
+    else:  # command get, no input pipe
+        to_check = " ".join(["kubectl"] + args[1:])
+        if args[0].split("/")[-1] == P_SHORTCUT:
+            to_check = " ".join(["kubectl"] + args[1:])
+        exec_args = to_check
+        lines = system_exec_map(exec_args)
+        if not lines:
+            return
+        if detect_output() != "pipe":
+            headers = ""
+            for line in lines:
+                if line:
+                    if line.isupper():
+                        headers = line
+                        continue
+                    line_split = line.split()
+                    kind = line_split[1]
+                    name = line_split[0]
+                    if name == "<none>" and kind == "<none>":
+                        continue
+                    if headers:
+                        print(headers)
+                        headers = ""
+                    print(line)
+            return
+        prev_p_in = {}
+        headers = ""
+        for line in lines:
+            if line:
+                if line.isupper():
+                    headers = line
+                    continue
+                line_split = line.split()
+                kind = line_split[1]
+                name = line_split[0]
+                if name == "<none>" and kind == "<none>":
+                    continue
+                if PIPE_KIND_IN not in prev_p_in :
+                    l_print_t(PIPE_KIND_IN, f"{kind}")
+                    prev_p_in[PIPE_KIND_IN] = kind
+                elif prev_p_in[PIPE_KIND_IN] != kind:
+                    l_print_t(PIPE_KIND_IN, f"{kind}")
+                    prev_p_in[PIPE_KIND_IN] = kind
+                if cmd["oo"] != P_UNKNOWN:
+                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
+                if get_flags:
+                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
+                if headers :
+                    if cmd["ctx"] != P_UNKNOWN:
+                        l_print_t(PIPE_CTX_IN, f"{cmd['ctx']}")
+                    if cmd["kc"] != P_UNKNOWN:
+                        l_print_t(PIPE_KC_IN, f"{cmd['kc']}")
+                    if cmd["ns"] != P_UNKNOWN:
+                        l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
+                    l_print_t(PIPE_CMD_IN, "get")
+                    l_print_t(PIPE_FMT_IN, f"{P_DEFAULT}")
+                    print(headers)
+                    headers = ""
+                print(line)
+        #         pass_output_format(args)
+        #     to_check = " ".join(["kubectl"] + args[1:])
+        #     if args[0].split("/")[-1] == P_SHORTCUT:
+        #         to_check = " ".join(["kubectl"] + args[1:])
+        #     exec_args = to_check
+        #     system_exec_map(exec_args)
+        # else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
+        #     if args[0].split("/")[-1] == P_SHORTCUT:
+        #         to_check = " ".join(["kubectl"] + args[1:])
+        #     else:
+        #         to_check = "# unhandled case map"
+        #     exec_args = to_check
+        #     system_exec_map(exec_args)
 
 
 def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position, get_flags):
@@ -2815,8 +2926,8 @@ def command_uniq(args, extracted_args_position):
             line_num = 0
             seen = []
             continue
-        if line_num == 0 and line.isupper():
-            line_num += 1
+        if line_num in [-1,0] and line.isupper():
+            line_num += 2
             position, columns = read_header_line(line)
             print(line, end="")
             continue
@@ -2901,6 +3012,7 @@ def main_loop(args):
         "help",
         "uniq",
         "examples",
+        "map"
     ]
 
     all_commands = all_kubectl_cmds + internal + plugins
@@ -2919,6 +3031,8 @@ def main_loop(args):
     elif command in ["kc-inject", "kci","kconf-inject","kc-file","kconf-file","kconf-files","kcf"]:  # generator
         command = "kc-inject"
         command_kc_inject(command, args, cmd, extracted_args_position)
+    elif command == "map":
+        command_map(command, args, cmd, extracted_args_position, get_flags, plugins)
     elif command in ["+", "-"]:  # filter
         command_filter(args)
     elif command == "?":
