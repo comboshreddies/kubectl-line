@@ -1648,6 +1648,7 @@ def command_map(command, args, cmd, extracted_args_position, get_flags, plugins)
     args.append('custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind"')
     if detect_input() == "fifo":
         # command_map_pipe_in(command, args, cmd, extracted_args_position, get_flags, plugins)
+        l_print_e(P_DEBUG,"pipe in on map not yet supported")
         pass
     else:  # command get, no input pipe
         to_check = " ".join(["kubectl"] + args[1:])
