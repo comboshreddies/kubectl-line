@@ -1868,7 +1868,7 @@ def command_parallel(command, args, extracted_args_position):
             ):  # name does not support kind, namespaced
                 l_print_t(P_ERROR, "{command} format 'name' not supported")
                 break
-            name_column = re.match(r"custom-columns=(.*,)*NAME:.*",p_in["format"])
+            name_column = re.match(r"custom-columns=(.*,)*.*NAME:.*",p_in["format"])
             if name_column:
                 if line_num == 0 and line.isupper():
                     line_num += 1
@@ -2354,7 +2354,7 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
             ):  # name does not support kind, namespaced
                 l_print_t(P_ERROR, "{command} format 'name' not supported")
                 break
-            name_column = re.match(r"custom-columns=(.*,)*NAME:.*",p_in["format"])
+            name_column = re.match(r"custom-columns=(.*,)*.*NAME:.*",p_in["format"])
             if name_column:
                 if line_num == 0 and line.isupper():
                     line_num += 1
@@ -2390,7 +2390,8 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 to_exec = to_exec.replace("{{name}}", p_in["name"])
             to_exec = to_exec.replace("{{kind}}", p_in["kind"])
             if detect_output() == "pipe":  # command get, in get
-                l_print_t(PIPE_CMD_IN, f"{command}")
+                #l_print_t(PIPE_CMD_IN, f"{command}")
+                l_print_t(PIPE_CMD_IN, "get")
                 if cmd["ns"] != P_UNKNOWN:
                     l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
                 elif p_in["ns"] != P_UNKNOWN:
@@ -2596,7 +2597,9 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
             ):
                 l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
                 prev_p_in["ctx"] = p_in["ctx"]
-            if (
+            if "KIND" in content:
+               l_print_t(PIPE_KIND_IN, content["KIND"])
+            elif (
                     p_in["kind"] != P_UNKNOWN
                     and prev_p_in["kind"] != p_in["kind"]
             ):
@@ -2624,7 +2627,7 @@ def command_owned(command, args, cmd, extracted_args_position, get_flags, plugin
     """find owner of requested object"""
     args[extracted_args_position[1]] = "get"
     args.append("-o")
-    args.append('custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind,ORIGIN:.metadata.name"')
+    args.append('custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind,ORIGIN_NAME:.metadata.name,ORIGIN_KIND:.kind,NAMESPACE:.metadata.namespace"')
     if detect_input() == "fifo":
         command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags, plugins)
     else:  # command get, no input pipe
@@ -2884,7 +2887,7 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
             ):  # name does not support kind, namespaced
                 l_print_t(P_ERROR, "{command} format 'name' not supported")
                 break
-            name_column = re.match(r"custom-columns=(.*,)*NAME:.*",p_in["format"])
+            name_column = re.match(r"custom-columns=(.*,)*.*NAME:.*",p_in["format"])
             if name_column:
                 if line_num == 0 and line.isupper():
                     line_num += 1
