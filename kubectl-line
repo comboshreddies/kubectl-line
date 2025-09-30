@@ -1802,8 +1802,6 @@ def command_parallel(command, args, extracted_args_position):
             print(to_exec)
             continue
         if p_in["cmd"] == "get":  # in cmd get, prev get
-            l_print_e(P_ERROR, " get is currently not supported with parallel")
-            continue
             if p_in["format"] in [P_DEFAULT, "wide"]:
                 if line_num == 0 and line.isupper():
                     line_num += 1
@@ -1887,15 +1885,31 @@ def command_parallel(command, args, extracted_args_position):
             if "KIND" in content:
                     prev_p_in["kind"] = p_in["kind"]
                     p_in["kind"] = content["KIND"]
-            if command == "sh":
-                to_check = " ".join(args[2:])
-                content_to_environ(content)
-                p_in_to_environ(p_in)
-            elif args[0].split("/")[-1] == P_SHORTCUT:
-                to_check = " ".join(["kubectl", P_SHORTCUT] + args[1:])
-            else:
-                to_check = " ".join(["kubectl"] + args[1:])
-            to_exec = generate_to_exec(p_in, to_check)
+
+            split_args = args[2].split(" ")
+            if split_args[0] in ["kubectl","_"]:
+                fill_in_kconfig = P_UNKNOWN
+                if "kc" in p_in:
+                    fill_in_kconfig = p_in["kc"]
+                if "FILE" in content:
+                    fill_in_kconfig = content["FILE"]
+                if fill_in_kconfig != P_UNKNOWN:
+                    split_args[0] += " --kubeconfig " + fill_in_kconfig + " "
+                fill_in_ctx = P_UNKNOWN
+                if "ctx" in p_in:
+                    fill_in_ctx = p_in["ctx"]
+                if fill_in_ctx != P_UNKNOWN:
+                    split_args[0] += " --context " + fill_in_ctx + " "
+                fill_in_ns = P_UNKNOWN
+                if "ns" in p_in:
+                    fill_in_ns = p_in["ns"]
+                if "NAMESPACE" in content:
+                    fill_in_ns = content["NAMESPACE"]
+                if fill_in_ns != P_UNKNOWN:
+                    split_args[0] += " -n " + fill_in_ns + " "
+            to_exec = " ".join(split_args)
+            split_args = to_exec.split("|")
+            to_exec = split_args[0]
             if ("event" in p_in["kind"].lower() and p_in["cmd"] == "get"
                     and p_in["name"] == P_UNKNOWN):
                 if line_num > 2:
@@ -1905,40 +1919,12 @@ def command_parallel(command, args, extracted_args_position):
             else:
                 to_exec = to_exec.replace("{{name}}", p_in["name"])
             to_exec = to_exec.replace("{{kind}}", p_in["kind"])
-            if detect_output() == "pipe":  # command get, in get
-                l_print_t(PIPE_CMD_IN, f"{command}")
-                if cmd["ns"] != P_UNKNOWN:
-                    l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
-                elif p_in["ns"] != P_UNKNOWN:
-                    l_print_t(PIPE_NS_IN, f"{p_in['ns']}")
-                if p_in["ctx"] != P_UNKNOWN and cmd["ctx"] == P_UNKNOWN:
-                    l_print_t(PIPE_CTX_IN, f"{p_in['ctx']}")
-                if p_in["kind"] != P_UNKNOWN and cmd["kind"] in ["{{kind}}", P_UNKNOWN]:
-                    l_print_t(PIPE_KIND_IN, f"{p_in['kind']}")
-                if p_in["kc"] != P_UNKNOWN:
-                    l_print_t(PIPE_KC_IN, f"{p_in['kc']}")
-                if p_in["oo"] != P_UNKNOWN:
-                    l_print_t(PIPE_OO_IN, f"{p_in['oo']}")
-                if get_flags:
-                    l_print_t(PIPE_OPT_IN, f"{get_flags}")
-                if cmd["oo"] != P_UNKNOWN:
-                    l_print_t(PIPE_OO_IN, f"{cmd['oo']}")
-                if cmd["ns"] != P_UNKNOWN:
-                    l_print_t(PIPE_NS_IN, f"{cmd['ns']}")
-                if cmd["kind"] != P_UNKNOWN and cmd["kind"] != "{{kind}}":
-                    l_print_t(PIPE_KIND_IN, f"{cmd['kind']}")
-                if p_in["name"] != P_UNKNOWN and cmd["name"] == "{{name}}":
-                    l_print_t(PIPE_NAME_IN, f"{p_in['name']}")
-                elif content['NAME'] != P_UNKNOWN and cmd["name"] == "{{name}}":
-                    l_print_t(PIPE_NAME_IN, f"{content['NAME']}")
-                exec_words = to_exec.split()
-                no_header_present = "--no-headers" in exec_words
-                pass_output_format(args)
-                # if unusual output is used then force headers ie remove no-headers
-                if no_header_present:
-                    to_exec = to_exec.replace("--no-headers", "")
             to_exec = replace_exec_line_with_content(to_exec, content)
-            system_exec(to_exec)
+            split_args[0] = to_exec
+            to_exec = "|".join(split_args)
+            # print(p_in)
+            # print(content)
+            print(to_exec)
             continue
         if p_in["cmd"] == "api-resources":  # in cmd get
             if p_in["format"] in [P_DEFAULT, "wide"]:
