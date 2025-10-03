@@ -40,3 +40,116 @@ nicer than parsing
 _ -n test-run get pod | _ ? RESTARTS ?1 ge 3 | _ ? RESTARTS ?1 le 5
 maybe something like .. | _ ? RESTARTS '?1 ge 3' '?1 le 5'
 
+IMPROVE parsing, render args on:
+- generic kubectl options -> some kctl_opts struct
+- command specific kubectl options -> kctl_cmd struct
+- leave unread options for command extension (api-r, cgc ...)
+  so each command can render them if needed
+
+maybe this could lead to 
+_ -n test-run get pod ? RESTARTS ?1 ge 3 
+or 
+_ -n test-run get pod _ ? RESTARTS ?1 ge 3 _ delete pod {{name}}
+or
+_ -n test-run delete pod ? RESTARTS ?1 ge 3
+
+----
+
+maybe gns instead of get ns <regexp>
+or add generic regexp postfilter with _ operator
+----
+
+integrate -o command interceptor like:
+-o _owner -> custom-columns=NAME:.metadata.ownerReferences[].name,ORIG:.metadata.name,KIND:.metadata.ownerReferences[].kind
+
+
+-------------------------------------------------------------
+parent projection uniq operator
+for example for pods there is a parent replicaset and parent deployment, and
+if I would like to restart deployment then I would like to have parent operator
+
+_ -n test-run get pod -l app=nginx | _ ^ -> should provide uniq replicasets
+_ -t test-run get pod -l app=nginx | _ ^^ -> should provide uniq deployment/sts/daemonst
+caret, or circumflex or hat
+
+parent object driller,
+get ns post post filter
+custom injector for multiple ns (maybe filter is enough)
+kind injector - maybe api-r filter is enough
+filter json
+extend kc-inject to kube-config-inject
+kc-file kconf-file kcf
+
+add template {{kc}} -> kcb for basename conf_file
+and kcf for full / replaced with _
+
+lookup parent
+reduce parent
+map child
+dig ?
+track
+
+add grep command
+
+TO IMPROVE
+handle custom format custom-columns=OWNER:metadata.ownerReferences[].name,NAME:.metadata.name
+confirm that there is NAME, KIND, NAMESPACE, or whatever is needed
+ie if p_in[kind] is present, no need for KIND
+ie get for example can work on kind (no name) but also if there is a NAME
+in payload it should be used 
+example
+_ -n test-run get pod -o custom-columns=OWNER:metadata.ownerReferences[].name,NAME:.metadata.name,KIND:.kind | _ get {{kind}} {{name}}
+ _ -n test-run get pod -o custom-columns=NAME:metadata.ownerReferences[].name,ORIG:.metadata.name,KIND:.metadata.ownerReferences[].kind  | _ get {{kind}} {{name}}
+fix headers do not send new headers as long as kind is same
+
+pipe left part is sending what it can (p_in), right part should have ideao of intentions
+like: current cmd  might receive kcf, ctx, ns, kind, name , (for example) cmd have defined ns kind, 
+      left cmd is sending ctx, ns, -> so ctx is accepted, ns is overwritten from cmd ns
+            request is rejected as no kind is specified
+      if left is sending kind, name, -> cmd can accept those
+      if left is sending kind,name , and cmd have it's own kind, and does not use name,
+          then request/pipeline is rejected
+
+
+map-down
+map-up
+
+or look-up
+or look-down
+
+or map-owner
+or map-owned
+
+owns
+owned-by
+
+child 
+_ api-r | _ get {{kind}} -A -o custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind,ORIGIN_NAME:.metadata.name,ORIGIN_KIND:.kind,NAMESPACE:.metadata.namespace" | _ + NAME busybox1-7f7f64dd8d | _ + KIND ReplicaSet
+implement internal filter on one or two columns (kind list ab,cd , or object list obj1 obj2 obj3)
+also maybe macro (set of subcommamnds) would be needed, or specific system_exec
+
+
+owner -> owns
+try to find solution for all kinds of parent objects like:
+search all objects (do it on all resources - api-r) , query metadata owner references name/kind
+and check if it matches
+
+parallelize
+or maybe psh
+
+_ parallel sh
+
+TOFIX
+_ api-r |  _ owned pods -A
+
+_ api-r |  _ get pods -A
+* api-r multiplies get pods executino as get does not uses kind or name
+
+
+could I figure out what previous command is passing,
+what this command is needing (hidden kcf, config , ns, explicit kind , obj_name)
+and if there are inputs (like kfc,config,ns) and no usage of {{kind}} or {{name}}
+report error
+?
+
+FEATURE -> add --show-labels on owned
