@@ -735,6 +735,29 @@ def system_exec_owned(cmd):
                 line_command_cache[cmd] = command_output
     return command_output.split("\n")
 
+
+def system_exec_exec(cmd):
+    """wraps command execution"""
+    if P_DEBUG:
+        l_print_e(P_EXEC, f"{cmd}")
+    exec_args = ["/bin/bash", "-c", cmd]
+    try:
+        # result = subprocess.run(exec_args, capture_output=True, text=True, check=True)
+        tty = open("/dev/tty", "r")
+        result = subprocess.run(exec_args, stdin=tty)
+    except subprocess.CalledProcessError as exc:
+        l_print_e(P_ERROR, f"executing: {exc.cmd[2:]}")
+        if len(exc.stdout):
+            print(f"{exc.stdout}", flush=True, end="")
+        if len(exc.stderr):
+            l_print_e(P_ERROR, f":stderr:{exc.stderr}")
+        if not P_IGNORE_ERRORS:
+            sys.exit(exc.returncode)
+        else:
+            l_print_e(P_ERROR, f":stderr: exit code {exc.returncode}, ignoring error")
+        return
+
+
 def system_exec(cmd):
     """wraps command execution"""
     if P_DEBUG:
@@ -1358,7 +1381,10 @@ def command_others_pipe_in(command, args, cmd, extracted_args_position, get_flag
             if content["FILE"] != P_UNKNOWN:
                 exec_args += ["--kubeconfig", content["FILE"]]
             exec_args += args[1:]
-            system_exec(" ".join(exec_args))
+            if command == "exec":
+                system_exec_exec(" ".join(exec_args))
+            else:
+                system_exec(" ".join(exec_args))
             continue
         if p_in["cmd"] == "config_get-contexts":  # command get, cgc
             if p_in["format"] == P_DEFAULT:
@@ -1388,7 +1414,11 @@ def command_others_pipe_in(command, args, cmd, extracted_args_position, get_flag
                 to_check = " ".join(["kubectl"] + args[1:])
             to_exec = generate_to_exec(p_in, to_check)
             to_exec = replace_exec_line_with_content(to_exec, content)
-            system_exec(to_exec)
+            if command == "exec":
+                system_exec_exec(to_exec)
+            else:
+                system_exec(to_exec)
+            continue
         elif p_in["cmd"] == "get":  # in cmd get, prev get
             if p_in["format"] in [P_DEFAULT, "wide"]:
                 if line_num == 0 and line.isupper():
@@ -1462,7 +1492,11 @@ def command_others_pipe_in(command, args, cmd, extracted_args_position, get_flag
                 to_exec = to_exec.replace("{{name}}", p_in["name"])
             to_exec = to_exec.replace("{{kind}}", p_in["kind"])
             to_exec = replace_exec_line_with_content(to_exec, content)
-            system_exec(to_exec)
+            if command == "exec":
+                system_exec_exec(to_exec)
+            else:
+                system_exec(to_exec)
+            continue
         elif p_in["cmd"] == "api-resources":  # in cmd get
             if p_in["format"] in [P_DEFAULT, "wide"]:
                 if line_num == 0 and line.isupper():
@@ -1556,7 +1590,11 @@ def command_others_pipe_in(command, args, cmd, extracted_args_position, get_flag
                     args
                 )  # TO CONSIDER should w tack prev_p_in['format']
             to_exec = replace_exec_line_with_content(to_exec, content)
-            system_exec(to_exec)
+            if command == "exec":
+                system_exec_exec(to_exec)
+            else:
+                system_exec(to_exec)
+            continue
         else:  # command get : unknown in cmd, best effort
             if line_num == 0 and line.isupper():
                 line_num += 1
@@ -1617,7 +1655,10 @@ def command_others_pipe_in(command, args, cmd, extracted_args_position, get_flag
             if p_in["kind"] != "<none>" and p_in["kind"] != P_UNKNOWN:
                 to_exec = to_exec.replace("{{kind}}", p_in["kind"])
             to_exec = replace_exec_line_with_content(to_exec, content)
-            system_exec(to_exec)
+            if command == "exec":
+                system_exec_exec(to_exec)
+            else:
+                system_exec(to_exec)
             continue
 
 
@@ -1651,7 +1692,10 @@ def command_others(command, args, cmd, extracted_args_position, get_flags, plugi
             exec_args = ["kubectl"] + args[1:]
         else:  # cmd get/plugin/sh, no input pipe, no output pipe, just exec command
             exec_args = ["kubectl"] + args[1:]
-        system_exec(" ".join(exec_args))
+        if command == "exec":
+            system_exec_exec(" ".join(exec_args))
+        else:
+            system_exec(" ".join(exec_args))
 
 
 def command_parallel(command, args, extracted_args_position):
