@@ -3532,6 +3532,8 @@ def command_kctl_generators_pipe_in(command, args, cmd, extracted_args_position,
                         p_in["name"] = content["NAME"][0:-10]
                     else:
                         p_in["name"] = content["NAME"]
+                    if p_in["get"] == "ns" :
+                        p_in["ns"] = content["NAME"]
                 if "NAMESPACE" in content:
                     p_in["ns"] = content["NAMESPACE"]
                 elif p_in["ns"] and p_in["ns"] != P_UNKNOWN:
