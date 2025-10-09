@@ -2688,6 +2688,8 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 exec_args += " | _ + KIND " + args[extracted_args_position[2]]
             if len(extracted_args_position) > 3:
                 exec_args += " | _ + NAME " + args[extracted_args_position[3]]
+            if "ns" in cmd:
+                exec_args += " | _ + NAMESPACE " + cmd["ns"]
             # todo if clean only if debug is not specified
             # or if output is pipe
             if detect_output() != "pipe":
@@ -2785,6 +2787,8 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 exec_args += " | _ + KIND " + args[extracted_args_position[2]]
             if len(extracted_args_position) > 3:
                 exec_args += " | _ + NAME " + args[extracted_args_position[3]]
+            if "ns" in cmd:
+                exec_args += " | _ + NAMESPACE " + cmd["ns"]
             # todo if clean only if debug is not specified
             # or if output is pipe
             if detect_output() != "pipe":
@@ -3219,6 +3223,10 @@ def command_child(command, args, cmd, extracted_args_position, get_flags, plugin
             exec_args += " | _ + KIND " + args[extracted_args_position[2]]
         if len(extracted_args_position) > 3:
             exec_args += " | _ + NAME " + args[extracted_args_position[3]]
+        if "ns" in cmd:
+            exec_args += " | _ + NAMESPACE " + cmd["ns"]
+        if "ns" in cmd:
+            exec_args += " | _ + NAMESPACE " + cmd["ns"]
         # todo do _ clean if no debug enabled
         exec_args += " | _ clean "
         lines = system_exec_owned(exec_args)
