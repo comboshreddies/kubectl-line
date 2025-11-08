@@ -1294,10 +1294,11 @@ def command_yaml_inject():
             head_printed = False
         else:
             if not head_printed and ( p_in["ctx"] != P_UNKNOWN or p_in["kc"] != P_UNKNOWN ):
+                print("---\n",end="")
                 if p_in["ctx"] != P_UNKNOWN:
-                    print(f"---\ncontext: {p_in['ctx']}\n", end="")
+                    print(f"context: {p_in['ctx']}\n", end="")
                 if p_in["kc"] != P_UNKNOWN:
-                    print(f"---\nkubeconfig: {p_in['kc']}\n", end="")
+                    print(f"kubeconfig: {p_in['kc']}\n", end="")
                 head_printed = True
             print(line, end="")
         line = sys.stdin.readline()
@@ -1307,26 +1308,26 @@ def command_json_inject():
     """injecting context or kubeconfig in json"""
     line = sys.stdin.readline()
     p_in = set_pipe_input()
-    head_printed = False
     while line:
         newline = sys.stdin.readline()
         if line.startswith(f"#{PLUGIN_NAME}:"):
             p_in = detect_in_plugin_content(p_in, line)
         else:
             if line == "{\n":
-                print("{\n")
+                print("{\n",end="")
                 prev_print = False
                 if p_in["ctx"] != P_UNKNOWN:
-                    print('"context": "' + p_in["ctx"] + '"')
+                    print('    "context": "' + p_in["ctx"] + '"',end="")
                     prev_print = True
                 if p_in["kc"] != P_UNKNOWN:
                     if prev_print:
-                        print(',\n')
-                    print( '"kubeconfig": "' + p_in["kc"] + '"')
+                        print(',\n',end="")
+                    print( '    "kubeconfig": "' + p_in["kc"] + '"',end="")
                     prev_print = True
                 if prev_print and newline:
-                    print(',\n')
-            print(line, end="")
+                    print(',\n',end="")
+            else:
+                print(line, end="")
         line = newline
 
 
