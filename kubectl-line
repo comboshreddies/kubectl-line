@@ -1287,45 +1287,46 @@ def command_yaml_inject():
     p_in = set_pipe_input()
     plugin_content = True
     line = sys.stdin.readline()
+    head_printed = False
     while line:
         if line.startswith(f"#{PLUGIN_NAME}:"):
-            plugin_content = True
-            if line.startswith(f"#{PLUGIN_NAME}:{PIPE_CTX_IN}: "):
-                p_in = detect_in_plugin_content(p_in, line)
+            p_in = detect_in_plugin_content(p_in, line)
+            head_printed = False
         else:
-            if plugin_content and p_in["ctx"] != P_UNKNOWN:
-                print(f"---\ncontext: {p_in['ctx']}\n", end="")
-            if plugin_content and p_in["kc"] != P_UNKNOWN:
-                print(f"---\nkubeconfig: {p_in['kc']}\n", end="")
-            plugin_content = False
+            if not head_printed and ( p_in["ctx"] != P_UNKNOWN or p_in["kc"] != P_UNKNOWN ):
+                if p_in["ctx"] != P_UNKNOWN:
+                    print(f"---\ncontext: {p_in['ctx']}\n", end="")
+                if p_in["kc"] != P_UNKNOWN:
+                    print(f"---\nkubeconfig: {p_in['kc']}\n", end="")
+                head_printed = True
             print(line, end="")
         line = sys.stdin.readline()
 
 
 def command_json_inject():
     """injecting context or kubeconfig in json"""
-    inject = ""
     line = sys.stdin.readline()
     p_in = set_pipe_input()
+    head_printed = False
     while line:
         newline = sys.stdin.readline()
         if line.startswith(f"#{PLUGIN_NAME}:"):
-            if line.startswith(f"#{PLUGIN_NAME}:{PIPE_CTX_IN}: "):
-                p_in = detect_in_plugin_content(p_in, line)
-                if p_in["ctx"] != P_UNKNOWN:
-                    inject = '"context": "' + p_in["ctx"] + '",'
-                if p_in["kc"] != P_UNKNOWN:
-                    inject = '"kubeconfig": "' + p_in["ctx"] + '",'
+            p_in = detect_in_plugin_content(p_in, line)
         else:
-            if line == "{\n" and inject:
-                print("{\n    " + inject)
-            elif line == "}\n":
-                if newline:
-                    print(line[:-1])
-                else:
-                    print(line[:-1])
-            else:
-                print(line, end="")
+            if line == "{\n":
+                print("{\n")
+                prev_print = False
+                if p_in["ctx"] != P_UNKNOWN:
+                    print('"context": "' + p_in["ctx"] + '"')
+                    prev_print = True
+                if p_in["kc"] != P_UNKNOWN:
+                    if prev_print:
+                        print(',\n')
+                    print( '"kubeconfig": "' + p_in["kc"] + '"')
+                    prev_print = True
+                if prev_print and newline:
+                    print(',\n')
+            print(line, end="")
         line = newline
 
 
@@ -2151,10 +2152,12 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 headers = ""
                 for owned_line in owned_lines:
                     if owned_line:
-                        if line.isupper():
+                        if owned_line.isupper():
                             headers = owned_line
                             continue
                         line_split = owned_line.split()
+                        if len(line_split) < 2:
+                            continue
                         kind = line_split[1]
                         name = line_split[0]
                         if name == "<none>" and kind == "<none>":
@@ -2222,7 +2225,8 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 p_in["ctx"] = content["NAME"]
             exec_args = ["kubectl"]
             if p_in["kc"] != P_UNKNOWN:
-                exec_args += ["--kubeconfig", content["FILE"]]
+                  exec_args += ["--kubeconfig", p_in["kc"]]
+            #    exec_args += ["--kubeconfig", content["FILE"]]
             exec_args += args[1:]
             owned_lines = system_exec_owned(" ".join(exec_args))
             if not owned_lines:
@@ -2231,7 +2235,7 @@ def command_owned_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 headers = ""
                 for owned_line in owned_lines:
                     if owned_line:
-                        if line.isupper():
+                        if owned_line.isupper():
                             headers = owned_line
                             continue
                         line_split = owned_line.split()
@@ -2680,8 +2684,10 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 content["FILE"] = p_in["kc"]
                 line_num += 1
             exec_args = "_ "
-            if content["FILE"] != P_UNKNOWN:
+            if "FILE" in content and content["FILE"] != P_UNKNOWN:
                 exec_args += "--kubeconfig " + content["FILE"] + " "
+            elif p_in["kc"] != P_UNKNOWN:
+                exec_args += "--kubeconfig " + p_in["kc"] + " "
             exec_args += ' api-r < /dev/null | _ get {{kind}} -A -o custom-columns="NAME:.metadata.ownerReferences[].name,KIND:.metadata.ownerReferences[].kind,ORIGIN_NAME:.metadata.name,ORIGIN_KIND:.kind,NAMESPACE:.metadata.namespace"'
             if len(extracted_args_position) > 2:
                 # todo later split arg on separate filters
@@ -2703,10 +2709,12 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                 headers = ""
                 for owned_line in owned_lines:
                     if owned_line:
-                        if line.isupper():
+                        if owned_line.isupper():
                             headers = owned_line
                             continue
                         line_split = owned_line.split()
+                        if len(line_split) < 2:
+                            continue
                         kind = line_split[1]
                         name = line_split[0]
                         if name == "<none>" and kind == "<none>":
@@ -2724,6 +2732,8 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                         headers = owned_line
                         continue
                     line_split = owned_line.split()
+                    if len(line_split) < 2:
+                        continue
                     kind = line_split[1]
                     name = line_split[0]
                     if name == "<none>" and kind == "<none>":
@@ -2807,6 +2817,8 @@ def command_child_pipe_in(command, args, cmd, extracted_args_position, get_flags
                             headers = owned_line
                             continue
                         line_split = owned_line.split()
+                        if len(line_split) < 2:
+                            continue
                         kind = line_split[1]
                         name = line_split[0]
                         if name == "<none>" and kind == "<none>":
