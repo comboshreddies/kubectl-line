@@ -118,7 +118,7 @@ _ -n monitoring get pod -l app=prom | _ exec -- env
 
 ## executing same kubectl operation on all available resource kinds (default cluster)
 ``` bash
-_ api-resources | get {{kind}} -A
+_ api-resources | _ get {{kind}} -A
 ```
 
 ## dumping all resources by resource kind (faster, less organized)
